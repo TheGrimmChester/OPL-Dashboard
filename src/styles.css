@@ -1,0 +1,54 @@
+:root {
+  color-scheme: light;
+  --bg0: #f3f6f9;
+  --bg1: #dde7f2;
+  --fg: #132033;
+  --muted: #4a5b70;
+  --accent: #1f6feb;
+  --card: rgba(255, 255, 255, 0.72);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--fg);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #c9ddf5 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #e8f0fa 0%, transparent 50%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+}
+
+.shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 18vh 1.5rem 3rem;
+}
+
+.brand {
+  margin: 0 0 0.75rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.lede { margin: 0 0 1.25rem; color: var(--muted); line-height: 1.5; }
+.meta { font-size: 0.9rem; color: var(--muted); }
+.health, .err {
+  margin-top: 1.25rem;
+  padding: 1rem 1.1rem;
+  background: var(--card);
+  border: 1px solid rgba(19, 32, 51, 0.08);
+  border-radius: 8px;
+  overflow: auto;
+}
+.err { color: #9b1c1c; }
+code { font-family: "IBM Plex Mono", ui-monospace, monospace; }
