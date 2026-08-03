@@ -3,14 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "description": "React/Vite dashboard for Open Perf Lab — scenario designer, load runs, SLA gates, optional OPA correlation deep-links.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@open-family/client": "file:../Open-Client-JS",
+    "@open-family/ui": "file:../Open-UI-JS",
+    "axios": "^1.6.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-icons": "^5.0.0",
+    "react-router-dom": "^6.20.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.0",
