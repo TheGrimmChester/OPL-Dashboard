@@ -89,6 +89,23 @@ function textToHeaders(text) {
   return out
 }
 
+/** Fragment inputs edit as `name=value` lines and save as a plain object. */
+function paramsToText(params) {
+  if (!params || typeof params !== 'object') return ''
+  return Object.entries(params).map(([k, v]) => `${k}=${v}`).join('\n')
+}
+
+function textToParams(text) {
+  const out = {}
+  String(text || '').split('\n').forEach((line) => {
+    const i = line.indexOf('=')
+    if (i <= 0) return
+    const k = line.slice(0, i).trim()
+    if (k) out[k] = line.slice(i + 1).trim()
+  })
+  return out
+}
+
 function parseJSONField(raw, fallback) {
   try {
     if (raw == null || raw === '') return fallback
@@ -1047,6 +1064,21 @@ export default function PerfLab() {
                   />
                 </div>
                 <div className="perf-field">
+                  <label htmlFor="perf-rv">Burst group size</label>
+                  <input
+                    id="perf-rv"
+                    className="opa-input"
+                    type="number"
+                    min={0}
+                    value={form.schedule?.rendezvous_group_size ?? 0}
+                    onChange={(e) => setForm({
+                      ...form,
+                      schedule: { ...form.schedule, rendezvous_group_size: Number(e.target.value) },
+                    })}
+                    title="Hold threads at the journey's first request until this many are waiting, then release them together. 0 disables."
+                  />
+                </div>
+                <div className="perf-field">
                   <label htmlFor="perf-p95">SLA p95 (ms)</label>
                   <input id="perf-p95" className="opa-input" type="number" value={form.sla.p95_ms} onChange={(e) => setForm({ ...form, sla: { ...form.sla, p95_ms: Number(e.target.value) } })} />
                 </div>
@@ -1085,6 +1117,32 @@ export default function PerfLab() {
                             )}
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {Array.isArray(validateResult.fragment_references) && validateResult.fragment_references.length > 0 && (
+                      <div style={{ marginTop: 10 }}>
+                        <div className="perf-banner-title" style={{ fontSize: 12 }}>Fragment references</div>
+                        <div className="perf-hint">
+                          A module reference keeps one shared definition; an inline copy drifts from it. Anything not emitted as a
+                          reference is listed with the reason.
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+                          {validateResult.fragment_references.map((r, i) => (
+                            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', fontSize: 12 }}>
+                              <code className="opa-mono">{r.step}</code>
+                              <span>→</span>
+                              <code className="opa-mono">{r.ref || '(unset)'}</code>
+                              <strong>
+                                {r.mode === 'module_reference' ? 'module reference'
+                                  : r.mode === 'inline_expansion' ? 'inlined copy' : 'not emitted'}
+                              </strong>
+                              {r.reason && <span className="perf-hint">{r.reason}</span>}
+                              {Array.isArray(r.params) && r.params.length > 0 && (
+                                <span className="perf-hint">inputs: {r.params.join(', ')}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                     {Array.isArray(validateResult.correlation_suggestions) && validateResult.correlation_suggestions.length > 0 && (
@@ -1335,17 +1393,65 @@ export default function PerfLab() {
                         </div>
                       )}
                       {selectedStep.type === 'fragment' && (
-                        <p className="perf-hint">Named reusable journey piece. Emitted disabled in JMX; Link/include expands children at emit time.</p>
+                        <p className="perf-hint">
+                          Named reusable journey piece. Stored once as a disabled test fragment at plan level; every Link that
+                          names it points at that one copy, so editing here changes every caller.
+                        </p>
                       )}
                       {(selectedStep.type === 'include' || selectedStep.type === 'link') && (
-                        <div className="perf-field">
-                          <label>Fragment ref (name)</label>
-                          <input
-                            className="opa-input"
-                            value={selectedStep.ref || selectedStep.fragment || ''}
-                            onChange={(e) => patchSelectedStep({ ref: e.target.value })}
-                            placeholder="SharedFragment"
-                          />
+                        <div className="perf-field-grid wide">
+                          <div className="perf-field">
+                            <label>Fragment ref (name)</label>
+                            <input
+                              className="opa-input"
+                              value={selectedStep.ref || selectedStep.fragment || ''}
+                              onChange={(e) => patchSelectedStep({ ref: e.target.value })}
+                              placeholder="SharedFragment"
+                            />
+                          </div>
+                          <div className="perf-field span-2">
+                            <label>Inputs (one name=value per line)</label>
+                            <textarea
+                              className="opa-input opa-mono"
+                              rows={3}
+                              value={paramsToText(selectedStep.params)}
+                              onChange={(e) => patchSelectedStep({ params: textToParams(e.target.value) })}
+                              placeholder={'user=alice\ntier=gold'}
+                            />
+                          </div>
+                          <p className="perf-hint span-3">
+                            Inputs let one fragment run with different values per reference. Validate reports, per reference,
+                            whether the plan emitted a reference to the shared fragment or fell back to an inline copy of it.
+                          </p>
+                        </div>
+                      )}
+                      {selectedStep.type === 'rendezvous' && (
+                        <div className="perf-field-grid wide">
+                          <div className="perf-field">
+                            <label>Group size</label>
+                            <input
+                              className="opa-input"
+                              type="number"
+                              min={0}
+                              value={selectedStep.group_size ?? 0}
+                              onChange={(e) => patchSelectedStep({ group_size: Number(e.target.value) })}
+                            />
+                          </div>
+                          <div className="perf-field">
+                            <label>Timeout (ms, 0 = wait forever)</label>
+                            <input
+                              className="opa-input"
+                              type="number"
+                              min={0}
+                              value={selectedStep.timeout_ms ?? 0}
+                              onChange={(e) => patchSelectedStep({ timeout_ms: Number(e.target.value) })}
+                            />
+                          </div>
+                          <p className="perf-hint span-3">
+                            Synchronising timer: threads wait here until the group fills, then fire together. 0 means every thread
+                            in the group. A group larger than the VU count never fills — with no timeout those threads wait out the
+                            whole run, so validation fails instead.
+                          </p>
                         </div>
                       )}
                     </div>
