@@ -154,6 +154,7 @@ function typeLabel(step) {
   if (t === 'foreach' || t === 'foreach_controller' || t === 'for_each') return 'ForEach'
   if (t === 'fragment') return 'Frag'
   if (t === 'include' || t === 'link') return 'Link'
+  if (t === 'rendezvous') return 'Burst'
   return (step?.method || 'HTTP').toUpperCase()
 }
 
@@ -180,7 +181,11 @@ function makeNode(type) {
     return { type: 'fragment', name: 'SharedFragment', children: [] }
   }
   if (type === 'include' || type === 'link') {
-    return { type: 'include', name: 'Include', ref: 'SharedFragment' }
+    return { type: 'include', name: 'Include', ref: 'SharedFragment', params: {} }
+  }
+  if (type === 'rendezvous') {
+    // group_size 0 is JMeter's "every thread in the group".
+    return { type: 'rendezvous', name: 'Burst', group_size: 0, timeout_ms: 0 }
   }
   if (type === 'extract') {
     return { type: 'extract', name: 'Extract', engine: 'regex', expression: '', var: 'token' }
@@ -315,7 +320,7 @@ export default function VuTree({
       return
     }
     // Nest HTTP under txn/if/while/loop/foreach/fragment; nest extract/assert under HTTP; nest controllers under nestable.
-    if (['if', 'while', 'loop', 'foreach', 'fragment', 'transaction', 'http', 'include'].includes(type) && isNestableType(ptype)) {
+    if (['if', 'while', 'loop', 'foreach', 'fragment', 'transaction', 'http', 'include', 'rendezvous'].includes(type) && isNestableType(ptype)) {
       onChange(insertChildAt(roots, parentPath, makeNode(type)))
       return
     }
@@ -360,6 +365,7 @@ export default function VuTree({
         <button type="button" className="opa-btn ghost" onClick={() => addRoot('foreach')} title="Add ForEach controller">ForEach</button>
         <button type="button" className="opa-btn ghost" onClick={() => addRoot('fragment')} title="Add reusable fragment">Frag</button>
         <button type="button" className="opa-btn ghost" onClick={() => addRoot('include')} title="Link to a named fragment">Link</button>
+        <button type="button" className="opa-btn ghost" onClick={() => addChild('rendezvous')} title="Hold threads until the group fills, then release them together">Burst</button>
         <button type="button" className="opa-btn ghost" onClick={() => addChild('extract')} title="Nest extract under selected HTTP">Extract</button>
         <button type="button" className="opa-btn ghost" onClick={() => addChild('assert')} title="Nest assert under selected HTTP">Assert</button>
         <button type="button" className="opa-btn ghost" disabled={!selectedPath} onClick={() => moveSelected(-1)} aria-label="Move up">↑</button>
@@ -367,7 +373,9 @@ export default function VuTree({
         <button type="button" className="opa-btn ghost" disabled={!selectedPath} onClick={removeSelected} aria-label="Remove"><FiTrash2 size={12} /></button>
       </div>
       <p className="perf-hint" style={{ margin: '0 0 8px' }}>
-        Drag to reorder (or drop onto If/While/Loop/ForEach/Txn/Frag/HTTP to nest). Fragments are definitions; Link expands them. Controllers round-trip through JMX.
+        Drag to reorder (or drop onto If/While/Loop/ForEach/Txn/Frag/HTTP to nest). Fragments are definitions kept once
+        in the plan; Link references one by name. Burst holds threads until the group fills, then releases them together —
+        it applies to the requests in its parent, so drop it on a single request to gate only that one. Controllers round-trip through JMX.
       </p>
       {!roots.length ? (
         <div className="perf-empty-cta">
