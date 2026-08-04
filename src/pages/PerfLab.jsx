@@ -15,6 +15,7 @@ import { useToast } from '../components/ui/Toast'
 import { fmtNum, fmtAgo } from '../theme/format'
 import { loadRunTracesHref, gatePassed } from '../utils/entityLinks'
 import VuTree, { getAtPath, patchStepAt } from '../components/VuTree'
+import LoadCurveEditor from '../components/LoadCurveEditor'
 import './PerfLab.css'
 
 function OpaTracesLink({ runId, children }) {
@@ -128,6 +129,8 @@ export default function PerfLab() {
   const [selectedStepPath, setSelectedStepPath] = useState(null)
   const [treeExpanded, setTreeExpanded] = useState({})
   const [validateResult, setValidateResult] = useState(null)
+  const [apiPolicies, setApiPolicies] = useState([])
+  const [showCurve, setShowCurve] = useState(false)
 
   const [form, setForm] = useState({
     name: 'my-load-test',
@@ -140,7 +143,7 @@ export default function PerfLab() {
     steps: [emptyStep()],
     datasets: { csv: { inline: '', variableNames: 'user,token', delimiter: ',', recycle: true } },
     sla: { p95_ms: 500, error_rate_max: 0.05 },
-    schedule: { ramp_seconds: 10 },
+    schedule: { ramp_seconds: 10, enabled: false, every_minutes: 0, daily_at: '' },
     jmx_xml: '',
   })
 
@@ -153,8 +156,42 @@ export default function PerfLab() {
   useEffect(() => {
     if (!hasFederationPeers && fanout) setFanout(false)
   }, [hasFederationPeers, fanout])
+
+  useEffect(() => {
+    axios.get(apiUrl('/api/perf/load-policies'))
+      .then(({ data }) => {
+        if (Array.isArray(data?.policies)) setApiPolicies(data.policies)
+      })
+      .catch(() => { /* optional — presets remain local */ })
+  }, [])
+
+  useEffect(() => {
+    if (policy === 'custom' || (Array.isArray(form.schedule?.curve) && form.schedule.curve.length)) {
+      setShowCurve(true)
+    }
+  }, [policy]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const engineLabel = scenarios.data?.engine || engine
   const runnerLabel = scenarios.data?.runner || 'docker'
+
+  const scenarioTrend = useMemo(() => {
+    if (!selectedId) return []
+    return runRows
+      .filter((r) => r.scenario_id === selectedId)
+      .slice(0, 25)
+      .map((r) => {
+        const s = parseJSONField(r.summary_json, {})
+        return {
+          id: r.id,
+          status: r.status,
+          started_at: r.started_at,
+          vus: r.vus,
+          p95_ms: Number(s.p95_ms) || 0,
+          error_rate: Number(s.error_rate) || 0,
+          samples: Number(s.requests || s.samples || s.n) || 0,
+        }
+      })
+  }, [selectedId, runRows])
 
   const flash = (tone, title, detail) => {
     setBanner({ tone, title, detail })
@@ -314,6 +351,42 @@ export default function PerfLab() {
     } finally {
       setBusy(false)
     }
+  }
+
+  const saveSchedule = async () => {
+    if (!selectedId) {
+      flash('error', 'Select a scenario', 'Save the scenario first, then patch schedule.')
+      return
+    }
+    setBusy(true)
+    try {
+      const patch = {
+        enabled: !!form.schedule?.enabled,
+        every_minutes: Number(form.schedule?.every_minutes) || 0,
+        daily_at: form.schedule?.daily_at || '',
+        ramp_seconds: form.schedule?.ramp_seconds,
+        curve: form.schedule?.curve,
+        policy: policy || form.schedule?.policy || undefined,
+        vus: form.vus,
+        workers,
+      }
+      const { data } = await axios.post(
+        apiUrl(`/api/perf/scenarios/${encodeURIComponent(selectedId)}/schedule`),
+        patch,
+      )
+      if (data.schedule) {
+        setForm((f) => ({ ...f, schedule: { ...f.schedule, ...data.schedule } }))
+      }
+      flash('ok', 'Schedule saved', data.honesty || 'In-process scheduler tick')
+    } catch (e) {
+      flash('error', 'Schedule save failed', e.response?.data || e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const setScheduleField = (patch) => {
+    setForm((f) => ({ ...f, schedule: { ...f.schedule, ...patch } }))
   }
 
   const exportRunReport = async (format = 'json') => {
@@ -798,8 +871,9 @@ export default function PerfLab() {
                 </div>
               </div>
 
-              <p className="perf-hint">
-                Build a nested VU tree (HTTP, transactions, extractors, asserts). Optional CSS/XPath selectors correlate recorded UI actions with requests.
+                              <p className="perf-hint">
+                Build a nested VU tree (HTTP, transactions, If/While/Loop, extractors, asserts). Drag to reorder.
+                Optional CSS/XPath selectors correlate recorded UI actions with requests.
                 Saving generates JMX for Docker execution.
               </p>
 
@@ -855,6 +929,9 @@ export default function PerfLab() {
                             <option value="extract">Extract variable</option>
                             <option value="assert">Assert</option>
                             <option value="transaction">Transaction label</option>
+                            <option value="if">If controller</option>
+                            <option value="while">While controller</option>
+                            <option value="loop">Loop controller</option>
                           </select>
                         </div>
                         <div className="perf-field span-2">
@@ -963,6 +1040,60 @@ export default function PerfLab() {
                       )}
                       {selectedStep.type === 'transaction' && (
                         <p className="perf-hint">Transaction containers group child HTTP requests in the JMX hashTree.</p>
+                      )}
+                      {(selectedStep.type === 'if' || selectedStep.type === 'if_controller') && (
+                        <div className="perf-field-grid wide">
+                          <div className="perf-field span-3">
+                            <label>Condition (JMeter expression)</label>
+                            <input
+                              className="opa-input opa-mono"
+                              value={selectedStep.condition || ''}
+                              onChange={(e) => patchSelectedStep({ condition: e.target.value })}
+                              placeholder={'${__jexl3("${status}"=="200")}'}
+                            />
+                          </div>
+                          <p className="perf-hint span-3">Emits IfController; children run when the condition is true.</p>
+                        </div>
+                      )}
+                      {(selectedStep.type === 'while' || selectedStep.type === 'while_controller') && (
+                        <div className="perf-field-grid wide">
+                          <div className="perf-field span-3">
+                            <label>Condition (JMeter expression)</label>
+                            <input
+                              className="opa-input opa-mono"
+                              value={selectedStep.condition || ''}
+                              onChange={(e) => patchSelectedStep({ condition: e.target.value })}
+                              placeholder={'${__jexl3("${more}"=="true")}'}
+                            />
+                          </div>
+                          <p className="perf-hint span-3">Emits WhileController — keep exit conditions tight to avoid runaway loops.</p>
+                        </div>
+                      )}
+                      {(selectedStep.type === 'loop' || selectedStep.type === 'loop_controller') && (
+                        <div className="perf-field-grid wide">
+                          <div className="perf-field">
+                            <label>Loops</label>
+                            <input
+                              className="opa-input"
+                              type="number"
+                              min={1}
+                              value={selectedStep.loops ?? 1}
+                              onChange={(e) => patchSelectedStep({ loops: Number(e.target.value) })}
+                            />
+                          </div>
+                          <div className="perf-field">
+                            <label>Forever</label>
+                            <select
+                              className="opa-input"
+                              value={selectedStep.forever ? '1' : '0'}
+                              onChange={(e) => patchSelectedStep({ forever: e.target.value === '1' })}
+                            >
+                              <option value="0">No</option>
+                              <option value="1">Yes</option>
+                            </select>
+                          </div>
+                          <p className="perf-hint span-3">Emits LoopController wrapping child samplers.</p>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1189,13 +1320,21 @@ export default function PerfLab() {
                       else if (v === 'sustained') setProfile('soak')
                       else if (v === 'stress') setProfile('spike')
                       else setProfile(v === 'custom' ? '' : v)
+                      if (v === 'custom') setShowCurve(true)
                     }}
                   >
                     <option value="">default</option>
-                    <option value="smooth">Smooth</option>
-                    <option value="sustained">Sustained</option>
-                    <option value="stress">Stress</option>
-                    <option value="custom">Custom</option>
+                    {(apiPolicies.length
+                      ? apiPolicies
+                      : [
+                        { id: 'smooth', label: 'Smooth' },
+                        { id: 'sustained', label: 'Sustained' },
+                        { id: 'stress', label: 'Stress' },
+                        { id: 'custom', label: 'Custom' },
+                      ]
+                    ).map((p) => (
+                      <option key={p.id} value={p.id}>{p.label || p.id}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="perf-field">
@@ -1232,10 +1371,90 @@ export default function PerfLab() {
                     <option value="1">Peers (≠ multi-region cloud)</option>
                   </select>
                 </div>
+                <div className="perf-field">
+                  <label>Custom curve</label>
+                  <select className="opa-input" value={showCurve ? '1' : '0'} onChange={(e) => setShowCurve(e.target.value === '1')}>
+                    <option value="0">Hidden</option>
+                    <option value="1">Edit point curve</option>
+                  </select>
+                </div>
+              </div>
+              {showCurve && (
+                <LoadCurveEditor
+                  curve={form.schedule?.curve}
+                  onChange={(curve) => {
+                    setPolicy('custom')
+                    setScheduleField({ curve, policy: 'custom' })
+                  }}
+                  onApplyPeak={({ peak, duration, ramp, curve }) => {
+                    setPolicy('custom')
+                    setForm((f) => ({
+                      ...f,
+                      vus: peak || f.vus,
+                      duration_seconds: duration || f.duration_seconds,
+                      schedule: {
+                        ...f.schedule,
+                        curve,
+                        policy: 'custom',
+                        ramp_seconds: ramp,
+                        peak_vus: peak,
+                        duration_seconds: duration,
+                      },
+                    }))
+                  }}
+                />
+              )}
+              <div className="sched-panel">
+                <div className="perf-hint" style={{ margin: 0 }}>Scheduler (in-process tick — every_minutes or daily_at UTC)</div>
+                <div className="perf-field-grid">
+                  <div className="perf-field">
+                    <label>Enabled</label>
+                    <select
+                      className="opa-input"
+                      value={form.schedule?.enabled ? '1' : '0'}
+                      onChange={(e) => setScheduleField({ enabled: e.target.value === '1' })}
+                    >
+                      <option value="0">Off</option>
+                      <option value="1">On</option>
+                    </select>
+                  </div>
+                  <div className="perf-field">
+                    <label>Every (minutes)</label>
+                    <input
+                      className="opa-input"
+                      type="number"
+                      min={0}
+                      value={form.schedule?.every_minutes || 0}
+                      onChange={(e) => setScheduleField({ every_minutes: Number(e.target.value) || 0 })}
+                      placeholder="60"
+                    />
+                  </div>
+                  <div className="perf-field">
+                    <label>Daily at (UTC HH:MM)</label>
+                    <input
+                      className="opa-input"
+                      value={form.schedule?.daily_at || ''}
+                      onChange={(e) => setScheduleField({ daily_at: e.target.value })}
+                      placeholder="02:30"
+                    />
+                  </div>
+                  <div className="perf-field">
+                    <label>Next fire</label>
+                    <input className="opa-input" readOnly value={form.schedule?.next_fire_at || '—'} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className="opa-btn ghost" disabled={busy || !selectedId} onClick={saveSchedule}>
+                    Save schedule
+                  </button>
+                  <button type="button" className="opa-btn ghost" disabled={busy} onClick={saveScenario}>
+                    Save scenario (incl. schedule_json)
+                  </button>
+                </div>
               </div>
               <p className="perf-hint">
                 Dispatch uses ephemeral JMeter containers on the compose network. Point target_url at an instrumented service (default http://node-app:3000/hello) so Open traces finds tags.load_run_id — example.com never yields traces.
-                Load policies (Smooth / Sustained / Stress) map onto local Docker workers only (≠ multi-cloud geo injectors).
+                Load policies (Smooth / Sustained / Stress / Custom curve) map onto local Docker workers only (≠ multi-cloud geo injectors).
                 Node requires OPA_PERF_ALLOW_NODE_FALLBACK=1.
                 {!hasFederationPeers
                   ? ' Federation fan-out disabled until peers are configured (OPA_FEDERATION_PEERS / opa.federation_peers) — otherwise runs stay local-sample-only.'
@@ -1253,6 +1472,34 @@ export default function PerfLab() {
                   <FiTrash2 size={12} /> Archive
                 </button>
               </div>
+              {scenarioTrend.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div className="perf-hint" style={{ marginBottom: 6 }}>
+                    Multi-run history for this scenario (≤25) — p95 / errors over recent runs
+                  </div>
+                  <DataTable
+                    columns={[
+                      {
+                        key: 'id', header: 'Run',
+                        render: (r) => (
+                          <button type="button" className="opa-btn ghost" style={{ padding: '0 4px', fontSize: 11 }} onClick={() => { setActiveRunId(r.id); setTab('results') }}>
+                            {String(r.id).slice(0, 18)}
+                          </button>
+                        ),
+                      },
+                      { key: 'status', header: 'Status', render: (r) => <StatusPill tone={r.status === 'failed' ? 'error' : 'neutral'}>{r.status}</StatusPill> },
+                      { key: 'vus', header: 'VUs', num: true, render: (r) => fmtNum(r.vus) },
+                      { key: 'p95_ms', header: 'p95', num: true, render: (r) => fmtNum(r.p95_ms) },
+                      { key: 'error_rate', header: 'Err', num: true, render: (r) => fmtNum(r.error_rate) },
+                      { key: 'samples', header: 'N', num: true, render: (r) => fmtNum(r.samples) },
+                      { key: 'started_at', header: 'Started', render: (r) => fmtAgo(r.started_at) },
+                    ]}
+                    rows={scenarioTrend}
+                    rowKey={(r) => r.id}
+                    maxHeight={200}
+                  />
+                </div>
+              )}
             </div>
           </Panel>
           <Panel title="Scenarios" flush loading={scenarios.loading} empty={!scenarios.loading && !scnRows.length} emptyText="Build a scenario in Design">
