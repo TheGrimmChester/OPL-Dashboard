@@ -12,6 +12,14 @@ Browser → (optional) OPA hub/dashboard URL for deep-links only
 
 Primary surface: Perf Lab studio at `/` and `/lab`.
 
+**Known gap — Virtual users & datasets tab.** The panel collects an inline CSV plus `variableNames`,
+`delimiter`, and `recycle` (`src/pages/PerfLab.jsx:1326-1387`) and saves them as `datasets_json`, but on
+`origin/main` the API never binds them to the executed plan: only `csv.inline` is read, and it is written to a
+`data.csv` that no generated plan references. A scenario using `${var}` therefore runs with the placeholder
+unsubstituted and no warning appears anywhere in the UI. Do not present this tab as working parameterisation
+until the API emits a CSV Data Set element — see
+[OPL-API jmeter-perf.md](https://github.com/TheGrimmChester/OPL-API/blob/main/docs/jmeter-perf.md#honesty).
+
 Notification channels and delivery history are read-only views over `GET /api/health` (`run_notify.channels[]`) and `GET /api/perf/notifications`. The dashboard never holds a webhook URL, chat URL, SMTP credential or recipient list — those stay in the stack `.env` on `opl-api`, which returns hosts and counts only.
 
 Report and trend templates are stored server-side (`/api/perf/report-templates`) and scoped by the `X-Organization-ID` / `X-Project-ID` headers the tenant context already attaches. The picker's selection is passed to exports as `?template=<id>` so a downloaded artifact matches the on-screen layout.
