@@ -312,3 +312,143 @@
 .perf-gate-row:last-child {
   border-bottom: none;
 }
+
+/* JMeter visual editor — VU design layout */
+.vu-design-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.95fr) minmax(0, 1.25fr);
+  gap: var(--sp-3);
+  align-items: start;
+  min-height: 280px;
+}
+
+@media (max-width: 900px) {
+  .vu-design-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.vu-design-tree {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  padding: var(--sp-3);
+  min-height: 240px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.vu-design-inspector {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  padding: var(--sp-3);
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.vu-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.vu-tree-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  align-items: center;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px dashed var(--border-subtle);
+}
+
+.vu-tree-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vu-tree-node {
+  min-width: 0;
+}
+
+.vu-tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--fs-12);
+}
+
+.vu-tree-row:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.vu-tree-row.selected {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
+
+.vu-tree-twist {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: var(--text-muted);
+}
+
+.vu-tree-twist.spacer {
+  visibility: hidden;
+}
+
+.vu-tree-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--fs-11);
+  font-family: var(--font-mono);
+  font-weight: var(--fw-semibold);
+  flex: 0 0 auto;
+}
+
+.vu-tree-badge.type-transaction,
+.vu-tree-badge.type-container {
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-3));
+}
+
+.vu-tree-badge.type-extract {
+  background: color-mix(in srgb, var(--ok) 22%, var(--surface-3));
+}
+
+.vu-tree-badge.type-assert {
+  background: color-mix(in srgb, var(--warn) 22%, var(--surface-3));
+}
+
+.vu-tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
