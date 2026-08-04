@@ -13,7 +13,7 @@ import {
 } from '../components/ui'
 import { useToast } from '../components/ui/Toast'
 import { fmtNum, fmtAgo } from '../theme/format'
-import { loadRunTracesHref, opaConfigured } from '../utils/entityLinks'
+import { loadRunTracesHref, gatePassed } from '../utils/entityLinks'
 import './PerfLab.css'
 
 function OpaTracesLink({ runId, children }) {
@@ -174,7 +174,19 @@ export default function PerfLab() {
   }, [compareA, compareB, runRows])
 
   const liveKPIs = useMemo(() => {
-    if (!samples.length) return { n: 0, p50: 0, p95: 0, p99: 0, err: 0 }
+    const summary = parseSummary(runDetail)
+    const fromSummary = Number(summary.requests || summary.samples || summary.n) > 0
+    if (fromSummary) {
+      return {
+        n: Number(summary.requests || summary.samples || summary.n) || 0,
+        p50: Number(summary.p50_ms) || 0,
+        p95: Number(summary.p95_ms) || 0,
+        p99: Number(summary.p99_ms) || 0,
+        err: Number(summary.error_rate) || 0,
+        source: 'summary',
+      }
+    }
+    if (!samples.length) return { n: 0, p50: 0, p95: 0, p99: 0, err: 0, source: 'none' }
     const lats = samples.map((s) => Number(s.latency_ms) || 0).sort((a, b) => a - b)
     const errors = samples.filter((s) => !s.ok && s.ok !== 1).length
     const pct = (p) => {
@@ -188,8 +200,9 @@ export default function PerfLab() {
       p95: pct(0.95),
       p99: pct(0.99),
       err: samples.length ? errors / samples.length : 0,
+      source: 'samples',
     }
-  }, [samples])
+  }, [samples, runDetail])
 
   useEffect(() => {
     if (!activeRunId || (tab !== 'results' && tab !== 'sla')) return undefined
@@ -504,9 +517,26 @@ export default function PerfLab() {
       const { data } = await axios.get(apiUrl(`/api/perf/runs/${encodeURIComponent(rid)}/gate`))
       setGateResult(data)
       setTab('sla')
-      flash(data.pass ? 'ok' : 'error', data.pass ? 'SLA passed' : 'SLA failed', (data.reasons || []).join('; ') || rid)
+      const ok = gatePassed(data)
+      flash(ok ? 'ok' : 'error', ok ? 'SLA passed' : 'SLA failed', (data.reasons || []).join('; ') || rid)
     } catch (e) {
       flash('error', 'Gate failed', e.response?.data || e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cancelRun = async (runId) => {
+    const rid = runId || activeRunId
+    if (!rid) { flash('warn', 'Select a run first'); return }
+    setBusy(true)
+    try {
+      const { data } = await axios.post(apiUrl(`/api/perf/runs/${encodeURIComponent(rid)}/cancel`))
+      flash('ok', 'Run cancelled', data.status || rid)
+      setRunDetail((prev) => (prev && prev.id === rid ? { ...prev, status: data.status || 'cancelled' } : prev))
+      runs.reload?.()
+    } catch (e) {
+      flash('error', 'Cancel failed', e.response?.data || e.message)
     } finally {
       setBusy(false)
     }
@@ -565,7 +595,7 @@ export default function PerfLab() {
   ]
 
   const sampleCols = [
-    { key: 'label', header: 'Label', render: (r) => r.label || r.name || r.url || '—' },
+    { key: 'label', header: 'Label', render: (r) => r.step_name || r.label || r.name || r.url || '—' },
     { key: 'latency_ms', header: 'ms', num: true, render: (r) => fmtNum(r.latency_ms) },
     {
       key: 'ok', header: 'OK',
@@ -573,6 +603,9 @@ export default function PerfLab() {
     },
     { key: 'ts', header: 'When', render: (r) => <span className="opa-muted">{fmtAgo(r.ts || r.t || r.started_at)}</span> },
   ]
+
+  const runIsActive = ['running', 'created'].includes(String(runDetail?.status || '').toLowerCase())
+  const summaryPreview = parseSummary(runDetail)
 
   return (
     <div className="opa-stack perf-studio">
@@ -582,7 +615,7 @@ export default function PerfLab() {
           <h1 className="opa-page-title">Load test studio</h1>
           <p className="opa-page-sub">
             Design scenarios visually, parameterize datasets, scale Docker load engines, and gate on SLA.
-            {opaConfigured() ? ' Correlate runs in OPA via load_run_id when configured.' : ''}
+            Correlate finished runs in OPA Trace Explorer via load_run_id (same-host :8088 by default).
           </p>
           <div className="perf-studio-meta">
             <span className="perf-chip">Engine <strong>{engineLabel}</strong></span>
@@ -1075,7 +1108,7 @@ export default function PerfLab() {
       {tab === 'results' && (
         <>
           <div className="opa-grid cols-4">
-            <KpiTile label="Samples" value={fmtNum(liveKPIs.n)} status="neutral" />
+            <KpiTile label={liveKPIs.source === 'summary' ? 'Requests' : 'Samples'} value={fmtNum(liveKPIs.n)} status="neutral" />
             <KpiTile label="p50 ms" value={fmtNum(liveKPIs.p50)} status="neutral" />
             <KpiTile label="p95 ms" value={fmtNum(liveKPIs.p95)} status={liveKPIs.p95 > (form.sla.p95_ms || 500) ? 'warn' : 'ok'} />
             <KpiTile label="Error rate" value={fmtNum(liveKPIs.err)} status={liveKPIs.err > (form.sla.error_rate_max || 0.05) ? 'error' : 'ok'} />
@@ -1083,22 +1116,49 @@ export default function PerfLab() {
           <Panel title="Active run">
             <div style={{ padding: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               <span className="opa-mono" style={{ fontSize: 12 }}>{activeRunId || 'No run selected'}</span>
-              <StatusPill tone="neutral">{runDetail?.status || '—'}</StatusPill>
+              <StatusPill tone={runDetail?.status === 'failed' || runDetail?.status === 'error' ? 'error' : runDetail?.status === 'passed' || runDetail?.status === 'completed' ? 'ok' : 'neutral'}>
+                {runDetail?.status || '—'}
+              </StatusPill>
               {activeRunId && <OpaTracesLink runId={activeRunId} />}
               {activeRunId && (
                 <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => evaluateGate(activeRunId)}>
                   <FiShield size={12} /> SLA gate
                 </button>
               )}
+              {activeRunId && runIsActive && (
+                <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => cancelRun(activeRunId)}>
+                  Cancel run
+                </button>
+              )}
               {!activeRunId && (
                 <span className="perf-hint">Start a run or pick one from the table below.</span>
               )}
             </div>
+            {summaryPreview && (summaryPreview.p95_ms != null || summaryPreview.engine || runDetail?.error) && (
+              <pre className="opa-mono" style={{ fontSize: 11, margin: '0 12px 12px', whiteSpace: 'pre-wrap' }}>
+                {JSON.stringify({
+                  engine: summaryPreview.engine,
+                  mode: summaryPreview.mode,
+                  p50_ms: summaryPreview.p50_ms,
+                  p95_ms: summaryPreview.p95_ms,
+                  p99_ms: summaryPreview.p99_ms,
+                  error_rate: summaryPreview.error_rate,
+                  requests: summaryPreview.requests,
+                  workers: summaryPreview.workers,
+                  error: runDetail?.error || summaryPreview.dispatch_error,
+                }, null, 2)}
+              </pre>
+            )}
           </Panel>
           {samples.length > 0 && (
             <Panel title="Live samples" flush>
               <DataTable columns={sampleCols} rows={samples.slice(0, 100)} rowKey={(r, i) => r.id || i} maxHeight={280} />
             </Panel>
+          )}
+          {activeRunId && samples.length === 0 && liveKPIs.source === 'none' && (
+            <p className="perf-hint" style={{ padding: '0 4px' }}>
+              No samples yet — waiting for the engine, or this run was created without dispatch.
+            </p>
           )}
           <Panel title="Runs" flush loading={runs.loading} empty={!runs.loading && !runRows.length} emptyText="Start a run from Run & scale">
             <DataTable columns={runCols} rows={runRows} rowKey={(r) => r.id} />
@@ -1199,7 +1259,7 @@ export default function PerfLab() {
             <p className="perf-hint">Gate evaluation is fail-closed on the Agent — empty or in-flight summaries fail unless explicitly allowed.</p>
             {gateResult ? (
               <div>
-                <StatusPill tone={gateResult.pass ? 'ok' : 'error'}>{gateResult.pass ? 'PASS' : 'FAIL'}</StatusPill>
+                <StatusPill tone={gatePassed(gateResult) ? 'ok' : 'error'}>{gatePassed(gateResult) ? 'PASS' : 'FAIL'}</StatusPill>
                 <div style={{ marginTop: 8 }}>
                   {(gateResult.reasons || ['No reasons returned']).map((reason, i) => (
                     <div className="perf-gate-row" key={i}>
