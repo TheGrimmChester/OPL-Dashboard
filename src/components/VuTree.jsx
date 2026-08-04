@@ -137,8 +137,10 @@ export function moveStepDnD(steps, fromPath, toPath, mode = 'before') {
 function isNestableType(type) {
   const t = type || 'http'
   return t === 'http' || t === 'transaction' || t === 'container'
-    || t === 'if' || t === 'while' || t === 'loop'
+    || t === 'if' || t === 'while' || t === 'loop' || t === 'foreach'
+    || t === 'fragment'
     || t === 'if_controller' || t === 'while_controller' || t === 'loop_controller'
+    || t === 'foreach_controller'
 }
 
 function typeLabel(step) {
@@ -149,6 +151,9 @@ function typeLabel(step) {
   if (t === 'if' || t === 'if_controller') return 'If'
   if (t === 'while' || t === 'while_controller') return 'While'
   if (t === 'loop' || t === 'loop_controller') return 'Loop'
+  if (t === 'foreach' || t === 'foreach_controller' || t === 'for_each') return 'ForEach'
+  if (t === 'fragment') return 'Frag'
+  if (t === 'include' || t === 'link') return 'Link'
   return (step?.method || 'HTTP').toUpperCase()
 }
 
@@ -167,6 +172,15 @@ function makeNode(type) {
   }
   if (type === 'loop') {
     return { type: 'loop', name: 'Loop', loops: 2, forever: false, children: [] }
+  }
+  if (type === 'foreach') {
+    return { type: 'foreach', name: 'ForEach', input_var: 'items', return_var: 'item', use_separator: true, children: [] }
+  }
+  if (type === 'fragment') {
+    return { type: 'fragment', name: 'SharedFragment', children: [] }
+  }
+  if (type === 'include' || type === 'link') {
+    return { type: 'include', name: 'Include', ref: 'SharedFragment' }
   }
   if (type === 'extract') {
     return { type: 'extract', name: 'Extract', engine: 'regex', expression: '', var: 'token' }
@@ -300,8 +314,8 @@ export default function VuTree({
       addRoot(type)
       return
     }
-    // Nest HTTP under txn/if/while/loop; nest extract/assert under HTTP; nest controllers under nestable.
-    if (['if', 'while', 'loop', 'transaction', 'http'].includes(type) && isNestableType(ptype)) {
+    // Nest HTTP under txn/if/while/loop/foreach/fragment; nest extract/assert under HTTP; nest controllers under nestable.
+    if (['if', 'while', 'loop', 'foreach', 'fragment', 'transaction', 'http', 'include'].includes(type) && isNestableType(ptype)) {
       onChange(insertChildAt(roots, parentPath, makeNode(type)))
       return
     }
@@ -343,6 +357,9 @@ export default function VuTree({
         <button type="button" className="opa-btn ghost" onClick={() => addRoot('if')} title="Add If controller">If</button>
         <button type="button" className="opa-btn ghost" onClick={() => addRoot('while')} title="Add While controller">While</button>
         <button type="button" className="opa-btn ghost" onClick={() => addRoot('loop')} title="Add Loop controller">Loop</button>
+        <button type="button" className="opa-btn ghost" onClick={() => addRoot('foreach')} title="Add ForEach controller">ForEach</button>
+        <button type="button" className="opa-btn ghost" onClick={() => addRoot('fragment')} title="Add reusable fragment">Frag</button>
+        <button type="button" className="opa-btn ghost" onClick={() => addRoot('include')} title="Link to a named fragment">Link</button>
         <button type="button" className="opa-btn ghost" onClick={() => addChild('extract')} title="Nest extract under selected HTTP">Extract</button>
         <button type="button" className="opa-btn ghost" onClick={() => addChild('assert')} title="Nest assert under selected HTTP">Assert</button>
         <button type="button" className="opa-btn ghost" disabled={!selectedPath} onClick={() => moveSelected(-1)} aria-label="Move up">↑</button>
@@ -350,7 +367,7 @@ export default function VuTree({
         <button type="button" className="opa-btn ghost" disabled={!selectedPath} onClick={removeSelected} aria-label="Remove"><FiTrash2 size={12} /></button>
       </div>
       <p className="perf-hint" style={{ margin: '0 0 8px' }}>
-        Drag to reorder (or drop onto If/While/Loop/Txn/HTTP to nest). Controllers round-trip through JMX.
+        Drag to reorder (or drop onto If/While/Loop/ForEach/Txn/Frag/HTTP to nest). Fragments are definitions; Link expands them. Controllers round-trip through JMX.
       </p>
       {!roots.length ? (
         <div className="perf-empty-cta">
