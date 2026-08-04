@@ -1405,6 +1405,20 @@ export default function PerfLab() {
                   <option value="0">No — stop when exhausted</option>
                 </select>
               </div>
+              <div className="perf-field">
+                <label htmlFor="csv-delimiter">CSV delimiter</label>
+                <input
+                  id="csv-delimiter"
+                  className="opa-input opa-mono"
+                  maxLength={4}
+                  value={form.datasets.csv?.delimiter ?? ','}
+                  onChange={(e) => setForm({
+                    ...form,
+                    datasets: { ...form.datasets, csv: { ...form.datasets.csv, delimiter: e.target.value } },
+                  })}
+                  placeholder=","
+                />
+              </div>
             </div>
             <div className="perf-field">
               <label htmlFor="csv-cols">Column names</label>
@@ -1427,7 +1441,12 @@ export default function PerfLab() {
                 placeholder={'user1,secret1,tok1\nuser2,secret2,tok2'}
               />
             </div>
-            <p className="perf-hint">Reference columns as {'${user}'} in URLs, headers, and bodies after save.</p>
+            <p className="perf-hint">
+              Reference columns as {'${user}'} in URLs, headers, and bodies after save. Rows are written with this
+              delimiter and read back by the plan with the same one — use <code className="opa-mono">{'\\t'}</code> or
+              the word <code className="opa-mono">tab</code> for tab-separated data. Validate lists any{' '}
+              {'${…}'} token that no column, extractor, or built-in can bind.
+            </p>
             <div>
               <button type="button" className="opa-btn primary" disabled={busy} onClick={saveScenario}>Save users & datasets</button>
             </div>
