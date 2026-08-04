@@ -432,6 +432,7 @@ export default function PerfLab() {
         daily_at: form.schedule?.daily_at || '',
         ramp_seconds: form.schedule?.ramp_seconds,
         curve: form.schedule?.curve,
+        curve_mode: form.schedule?.curve_mode || undefined,
         policy: policy || form.schedule?.policy || undefined,
         vus: form.vus,
         workers,
@@ -1535,11 +1536,27 @@ export default function PerfLab() {
               {showCurve && (
                 <LoadCurveEditor
                   curve={form.schedule?.curve}
+                  curveMode={form.schedule?.curve_mode || 'vus'}
+                  onModeChange={(curve_mode) => {
+                    setPolicy('custom')
+                    const nextCurve = curve_mode === 'arrivals'
+                      ? (Array.isArray(form.schedule?.curve) && form.schedule.curve.some((p) => p.rate != null)
+                        ? form.schedule.curve
+                        : [{ t: 0, rate: 0 }, { t: 30, rate: 2 }, { t: 90, rate: 2 }, { t: 120, rate: 0 }])
+                      : (Array.isArray(form.schedule?.curve) && form.schedule.curve.some((p) => p.vus != null)
+                        ? form.schedule.curve
+                        : [{ t: 0, vus: 0 }, { t: 30, vus: 10 }, { t: 90, vus: 10 }, { t: 120, vus: 0 }])
+                    setScheduleField({ curve_mode, curve: nextCurve, policy: 'custom' })
+                  }}
                   onChange={(curve) => {
                     setPolicy('custom')
-                    setScheduleField({ curve, policy: 'custom' })
+                    setScheduleField({
+                      curve,
+                      policy: 'custom',
+                      curve_mode: form.schedule?.curve_mode || 'vus',
+                    })
                   }}
-                  onApplyPeak={({ peak, duration, ramp, curve }) => {
+                  onApplyPeak={({ mode, peak, duration, ramp, curve, totalArrivals, peakRate }) => {
                     setPolicy('custom')
                     setForm((f) => ({
                       ...f,
@@ -1549,8 +1566,11 @@ export default function PerfLab() {
                         ...f.schedule,
                         curve,
                         policy: 'custom',
-                        ramp_seconds: ramp,
-                        peak_vus: peak,
+                        curve_mode: mode || 'vus',
+                        ramp_seconds: mode === 'arrivals' ? 0 : ramp,
+                        peak_vus: mode === 'arrivals' ? undefined : peak,
+                        total_arrivals: mode === 'arrivals' ? totalArrivals : undefined,
+                        peak_rate: mode === 'arrivals' ? peakRate : undefined,
                         duration_seconds: duration,
                       },
                     }))
