@@ -33,9 +33,15 @@ export function widgetLabel(w) {
 // headers the axios defaults already carry.
 export function useReportTemplates(kind) {
   const [templates, setTemplates] = useState([])
-  const [loading, setLoading] = useState(false)
+  // Start "loading" so a selection restored from elsewhere is not dropped before
+  // the first fetch resolves; reload() re-raises it synchronously for the same
+  // reason (a template saved a moment ago is not yet in `templates`).
+  const [loading, setLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
-  const reload = () => setReloadKey((k) => k + 1)
+  const reload = () => {
+    setLoading(true)
+    setReloadKey((k) => k + 1)
+  }
 
   useEffect(() => {
     let cancelled = false
