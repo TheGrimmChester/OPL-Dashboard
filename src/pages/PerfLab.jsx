@@ -133,6 +133,7 @@ export default function PerfLab() {
   const [validateResult, setValidateResult] = useState(null)
   const [apiPolicies, setApiPolicies] = useState([])
   const [showCurve, setShowCurve] = useState(false)
+  const [runNotify, setRunNotify] = useState(null)
 
   const [form, setForm] = useState({
     name: 'my-load-test',
@@ -165,6 +166,14 @@ export default function PerfLab() {
         if (Array.isArray(data?.policies)) setApiPolicies(data.policies)
       })
       .catch(() => { /* optional — presets remain local */ })
+  }, [])
+
+  useEffect(() => {
+    axios.get(apiUrl('/api/health'))
+      .then(({ data }) => {
+        if (data?.run_notify && typeof data.run_notify === 'object') setRunNotify(data.run_notify)
+      })
+      .catch(() => { /* health optional for UI chrome */ })
   }, [])
 
   useEffect(() => {
@@ -1430,6 +1439,21 @@ export default function PerfLab() {
         <>
           <Panel title="Run & scale">
             <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {runNotify && (
+                <div className="perf-hint" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <StatusPill tone={runNotify.configured ? (runNotify.mode === 'log' ? 'warn' : 'ok') : 'neutral'}>
+                    {runNotify.configured
+                      ? (runNotify.mode === 'log' ? 'Notify log-only' : 'Webhook on')
+                      : 'Webhook off'}
+                  </StatusPill>
+                  <span>
+                    Terminal-run notifications
+                    {runNotify.configured
+                      ? ` · ${runNotify.mode || 'deliver'}${runNotify.statuses ? ` · ${runNotify.statuses}` : ''}${runNotify.url_host ? ` · ${runNotify.url_host}` : ''}${runNotify.signed ? ' · signed' : ''}`
+                      : ' · set OPL_RUN_WEBHOOK_URL on opl-api'}
+                  </span>
+                </div>
+              )}
               <div>
                 <div className="perf-hint" style={{ marginBottom: 8 }}>Stress presets</div>
                 <div className="perf-preset-row">
