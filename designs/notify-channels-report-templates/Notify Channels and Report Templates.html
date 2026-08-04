@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OPL — Notification channels &amp; report templates</title>
+  <style>
+    :root {
+      --bg-base: #0B0E14;
+      --bg-sunken: #070A0F;
+      --surface-1: #121722;
+      --surface-2: #1A2130;
+      --surface-3: #232B3D;
+      --border-subtle: #222A38;
+      --border-default: #2E3748;
+      --border-strong: #3C4759;
+      --text-primary: #E6EAF2;
+      --text-secondary: #9AA6BC;
+      --text-muted: #66748C;
+      --text-disabled: #47526A;
+      --accent: #7C6CFF;
+      --accent-hover: #8F80FF;
+      --accent-subtle: rgba(124, 108, 255, 0.14);
+      --accent-2: #17C0C0;
+      --ok: #2FD98A;        --ok-dim: rgba(47, 217, 138, 0.14);
+      --warn: #F5C451;      --warn-dim: rgba(245, 196, 81, 0.14);
+      --error: #FF5C6C;     --error-dim: rgba(255, 92, 108, 0.14);
+      --info: #4CA9FF;      --info-dim: rgba(76, 169, 255, 0.14);
+      --p50: #2FD98A;
+      --p95: #F5C451;
+      --p99: #FF5C6C;
+      --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+      --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+      --radius-sm: 4px;
+      --radius: 6px;
+      --radius-lg: 10px;
+      --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.4);
+      --shadow-drawer: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font-ui);
+      background:
+        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(124,108,255,0.18), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 90% 0%, rgba(23,192,192,0.12), transparent 50%),
+        var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+      text-wrap: pretty;
+    }
+    .shell { max-width: 1180px; margin: 0 auto; padding: 28px 20px 96px; }
+    .kicker {
+      font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--text-muted); margin-bottom: 6px;
+    }
+    h1 { font-size: 28px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.02em; }
+    .sub { color: var(--text-secondary); max-width: 66ch; margin: 0 0 24px; line-height: 1.5; font-size: 14px; }
+    .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tab {
+      border: 1px solid var(--border-default); background: var(--surface-1);
+      color: var(--text-secondary); padding: 7px 14px; border-radius: 999px;
+      font-size: 13px; cursor: pointer; font-family: inherit;
+    }
+    .tab:hover { color: var(--text-primary); border-color: var(--border-strong); }
+    .tab[aria-selected="true"] { background: var(--accent); color: #fff; border-color: transparent; }
+
+    /* ---------- panel ---------- */
+    .panel {
+      background: var(--surface-1); border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg); margin-bottom: 14px; overflow: visible;
+    }
+    .panel-h {
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap;
+    }
+    .panel-h h2 { margin: 0; font-size: 14px; font-weight: 600; }
+    .panel-h .spacer { margin-left: auto; }
+    .panel-b { padding: 16px; }
+    .panel-b.flush { padding: 0; }
+    .stack { display: flex; flex-direction: column; gap: var(--sp-3); }
+    .row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+    .hint { font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.5; }
+    .mono { font-family: var(--font-mono); }
+    [hidden] { display: none !important; }
+
+    /* ---------- buttons ---------- */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid var(--border-default); background: var(--surface-2);
+      color: var(--text-primary); padding: 6px 12px; border-radius: var(--radius-sm);
+      font-size: 12px; cursor: pointer; font-family: inherit;
+    }
+    .btn:hover { background: var(--surface-3); border-color: var(--border-strong); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { background: var(--accent-hover); }
+    .btn.ghost { background: none; border-color: transparent; color: var(--text-secondary); }
+    .btn.ghost:hover { background: var(--surface-2); color: var(--text-primary); }
+    .btn.danger { color: var(--error); border-color: rgba(255,92,108,0.35); background: none; }
+    .btn.danger:hover { background: var(--error-dim); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    select.inp, input.inp, textarea.inp {
+      padding: 5px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-default);
+      background: var(--bg-sunken); color: var(--text-primary); font-size: 13px; font-family: var(--font-ui);
+    }
+    select.inp:focus, input.inp:focus { outline: none; border-color: var(--accent); }
+
+    /* ---------- badges ---------- */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px;
+      border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap;
+      border: 1px solid transparent;
+    }
+    .badge .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+    .badge.ok      { color: var(--ok);    background: var(--ok-dim); }
+    .badge.ok .dot { background: var(--ok); }
+    .badge.err     { color: var(--error); background: var(--error-dim); }
+    .badge.err .dot{ background: var(--error); }
+    /* logged: informational, and the dot is a HOLLOW ring — nothing left the box */
+    .badge.info     { color: var(--info); background: var(--info-dim); }
+    .badge.info .dot{ background: transparent; border: 1.5px solid var(--info); }
+    /* skipped / not configured: muted, dashed, no fill, dash instead of a dot */
+    .badge.mute      { color: var(--text-muted); background: none; border: 1px dashed var(--border-strong); }
+    .badge.mute .dot { width: 8px; height: 0; border-radius: 0; border-top: 1.5px solid var(--text-disabled); }
+    .badge.accent    { color: var(--accent); background: var(--accent-subtle); }
+    .badge.accent .dot { background: var(--accent); }
+    .badge.warn      { color: var(--warn); background: var(--warn-dim); }
+    .badge.warn .dot { background: transparent; border: 1.5px solid var(--warn); }
+    .badge.plain     { color: var(--text-secondary); background: var(--surface-2); border-color: var(--border-default); }
+    .badge.plain .dot{ background: var(--text-muted); }
+
+    /* ---------- channel status strip ---------- */
+    .mode-bar {
+      display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+      padding: 10px 12px; border-radius: var(--radius);
+      background: var(--bg-sunken); border: 1px solid var(--border-subtle);
+    }
+    .mode-bar .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+    /* log mode must LOOK different, not just read different */
+    .mode-bar.is-log { border-style: dashed; border-color: var(--warn); background: rgba(245,196,81,0.05); }
+    .mode-note { font-size: 12px; color: var(--text-secondary); }
+
+    .chan-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    @media (max-width: 860px) { .chan-strip { grid-template-columns: 1fr; } }
+    .chan {
+      position: relative; text-align: left; font-family: inherit; cursor: pointer;
+      background: var(--surface-2); border: 1px solid var(--border-default);
+      border-left: 3px solid var(--ok);
+      border-radius: var(--radius); padding: 10px 12px;
+      display: flex; flex-direction: column; gap: 6px;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    .chan:hover { background: var(--surface-3); }
+    .chan:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .chan[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-3); }
+    .chan.is-log { border-left-color: var(--warn); border-left-style: dashed; }
+    /* not configured: muted + dashed all round. Neutral — neither error nor success. */
+    .chan.is-off { background: none; border-style: dashed; border-left: 3px dashed var(--border-strong); }
+    .chan-top { display: flex; align-items: center; gap: 8px; }
+    .chan-name { font-size: 13px; font-weight: 600; }
+    .chan.is-off .chan-name { color: var(--text-secondary); font-weight: 500; }
+    .chan-kind { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+    .chan-state { font-size: 12px; color: var(--text-secondary); }
+    .chan.is-off .chan-state { color: var(--text-muted); }
+    .chan-meta { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-muted); }
+    .chan-meta > span { display: block; }
+    .chan-meta .k { display: inline; color: var(--text-disabled); text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; }
+    .chan-meta code { font-family: var(--font-mono); color: var(--text-secondary); font-size: 11px; }
+    /* hover / focus popover with the redacted target */
+    .chan-pop {
+      position: absolute; left: 0; top: calc(100% + 6px); z-index: 20; min-width: 240px;
+      background: var(--surface-2); border: 1px solid var(--border-strong);
+      border-radius: var(--radius); box-shadow: var(--shadow-pop); padding: 10px 12px;
+      display: none;
+    }
+    .chan:hover .chan-pop, .chan:focus-visible .chan-pop { display: block; }
+    .chan.is-expanded .chan-pop { display: none; }
+
+    /* ---------- filter row ---------- */
+    .filter-row {
+      display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap;
+      padding: 10px 16px; border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-sunken);
+    }
+    .filter-grp { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .filter-grp > .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-right: 2px; }
+    .chip {
+      border: 1px solid var(--border-default); background: var(--surface-1);
+      color: var(--text-secondary); border-radius: 999px; padding: 3px 10px;
+      font-size: 11px; cursor: pointer; font-family: inherit;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .chip:hover { color: var(--text-primary); border-color: var(--border-strong); }
+    .chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-subtle); color: var(--text-primary); }
+    .chip .n { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+    .chip[aria-pressed="true"] .n { color: var(--text-secondary); }
+    /* square multi-select chips for widgets/metrics — visibly a checkbox, not a filter */
+    .chip.check { border-radius: var(--radius-sm); padding: 4px 10px 4px 8px; font-size: 12px; }
+    .chip.check .box {
+      width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto;
+      border: 1px solid var(--border-strong); background: var(--bg-sunken);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 9px; line-height: 1; color: #fff;
+    }
+    .chip.check[aria-pressed="true"] .box { background: var(--accent); border-color: var(--accent); }
+    .chip.check .mono { font-family: var(--font-mono); font-size: 11px; }
+    .chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    /* ---------- tables ---------- */
+    .tbl-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); }
+    th {
+      color: var(--text-muted); font-weight: 600; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      background: var(--surface-2); border-bottom: 1px solid var(--border-default); white-space: nowrap;
+    }
+    td { color: var(--text-secondary); }
+    tbody tr:hover { background: var(--surface-1); }
+    td.num { font-family: var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+    td.mono { font-family: var(--font-mono); color: var(--text-primary); }
+    td.detail { color: var(--text-muted); }
+    td.detail.is-muted { font-style: normal; color: var(--text-disabled); }
+    .link-run {
+      font-family: var(--font-mono); font-size: 11px; color: var(--accent);
+      background: none; border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+      padding: 1px 7px; cursor: pointer;
+    }
+    .link-run:hover { border-color: var(--accent); background: var(--surface-3); }
+    .empty {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      padding: 44px 16px; color: var(--text-muted); text-align: center; font-size: 13px;
+    }
+    .empty .big { color: var(--text-secondary); font-size: 13px; }
+    .empty .small { font-size: 12px; color: var(--text-disabled); max-width: 46ch; line-height: 1.5; }
+
+    /* ---------- kpis / charts ---------- */
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+    @media (max-width: 860px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+    .kpi {
+      background: var(--surface-1); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius); padding: 12px 14px;
+    }
+    .kpi .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .kpi .val { font-size: 22px; font-weight: 600; font-family: var(--font-mono); margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .kpi .foot { font-size: 11px; margin-top: 4px; color: var(--text-muted); font-family: var(--font-mono); }
+    .chart-wrap {
+      background: var(--bg-sunken); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius); padding: 12px;
+    }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 11px; color: var(--text-secondary); }
+    .legend span::before {
+      content: ""; display: inline-block; width: 10px; height: 3px;
+      margin-right: 6px; vertical-align: middle; border-radius: 2px; background: currentColor;
+    }
+    .leg-p50 { color: var(--p50); } .leg-p95 { color: var(--p95); }
+    .leg-p99 { color: var(--p99); } .leg-sla { color: var(--accent-2); }
+    .bars { display: flex; align-items: flex-end; gap: 6px; height: 108px; padding-top: 8px; }
+    .bar {
+      flex: 1; min-width: 0; position: relative; border-radius: 3px 3px 0 0;
+      background: linear-gradient(180deg, rgba(255,92,108,0.85), rgba(255,92,108,0.22));
+      transition: transform 0.15s ease;
+    }
+    .bar:hover { transform: translateY(-2px); }
+    .bar .tip {
+      display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      background: var(--surface-3); padding: 3px 6px; border-radius: 4px; font-size: 10px;
+      white-space: nowrap; margin-bottom: 4px; font-family: var(--font-mono);
+    }
+    .bar:hover .tip { display: block; }
+    .grid-2 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; }
+    @media (max-width: 940px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    /* ---------- template picker bar ---------- */
+    .tmpl-bar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+    .tmpl-bar .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+    .tmpl-sum {
+      background: var(--bg-sunken); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius); padding: 10px 12px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .tmpl-sum .line { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; font-size: 12px; }
+    .tmpl-sum .k {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-disabled);
+      min-width: 62px;
+    }
+    .tmpl-sum .v { color: var(--text-secondary); }
+    .tmpl-sum code { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+    .scope-note { font-size: 11px; color: var(--text-muted); }
+
+    /* export label */
+    .export-label { font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.6; }
+    .export-label strong { color: var(--text-primary); font-weight: 600; }
+    .export-label .tname { color: var(--accent); }
+    .export-label .tnone { color: var(--text-muted); }
+    .sect-list { display: flex; flex-direction: column; gap: 1px; }
+    .sect {
+      display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+      border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+      background: var(--surface-2); font-size: 12px;
+    }
+    .sect.is-out { background: none; border-style: dashed; color: var(--text-muted); }
+    .sect .nm { font-family: var(--font-mono); font-size: 11px; min-width: 78px; color: var(--text-primary); }
+    .sect.is-out .nm { color: var(--text-muted); }
+    .sect .ds { color: var(--text-muted); flex: 1; }
+    .pack-preview {
+      font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary);
+      background: var(--bg-sunken); border: 1px dashed var(--border-default);
+      border-radius: var(--radius); padding: 12px; line-height: 1.65; white-space: pre;
+      overflow-x: auto;
+    }
+
+    /* ---------- modal ---------- */
+    .scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 900; }
+    .modal {
+      position: fixed; z-index: 901; inset: 5vh 0 auto; margin: 0 auto;
+      width: min(880px, calc(100vw - 32px));
+      background: var(--surface-1); border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg); box-shadow: var(--shadow-drawer);
+      max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal-h {
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .modal-h h3 { margin: 0; font-size: 14px; font-weight: 600; }
+    .modal-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); overflow: hidden; flex: 1; min-height: 0; }
+    @media (max-width: 720px) { .modal-body { grid-template-columns: 1fr; } .tmpl-list { max-height: 140px; } }
+    .tmpl-list {
+      border-right: 1px solid var(--border-subtle); background: var(--bg-sunken);
+      overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 2px;
+    }
+    .tmpl-list .grp {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-disabled); padding: 8px 8px 4px;
+    }
+    .tmpl-item {
+      text-align: left; font-family: inherit; cursor: pointer;
+      background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
+      padding: 6px 8px; color: var(--text-secondary); font-size: 12px;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .tmpl-item:hover { background: var(--surface-1); color: var(--text-primary); }
+    .tmpl-item[aria-current="true"] { background: var(--accent-subtle); color: var(--text-primary); border-color: var(--border-default); }
+    .tmpl-item .m { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+    .editor { overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: var(--sp-4); }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field > label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+    .field .inp { width: 100%; }
+    .field .help { font-size: 11px; color: var(--text-disabled); }
+    .field-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+    @media (max-width: 560px) { .field-2 { grid-template-columns: 1fr; } }
+    .seg { display: inline-flex; background: var(--bg-sunken); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 2px; gap: 2px; }
+    .seg button {
+      border: none; background: none; color: var(--text-secondary); font-size: 12px;
+      padding: 4px 12px; border-radius: 3px; cursor: pointer; font-family: inherit;
+    }
+    .seg button:hover { color: var(--text-primary); }
+    .seg button.active { background: var(--surface-2); color: var(--text-primary); }
+    .modal-f {
+      display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+      padding: 12px 16px; border-top: 1px solid var(--border-subtle); background: var(--surface-1);
+    }
+    .modal-f .spacer { margin-left: auto; }
+    .err-line { font-size: 12px; color: var(--error); }
+
+    /* ---------- tweaks + toast ---------- */
+    .tweaks-toggle {
+      position: fixed; left: 16px; bottom: 16px; z-index: 800;
+    }
+    .tweaks {
+      position: fixed; left: 16px; bottom: 56px; z-index: 800; width: 264px;
+      background: var(--surface-2); border: 1px solid var(--border-strong);
+      border-radius: var(--radius); box-shadow: var(--shadow-pop); padding: 12px;
+      display: flex; flex-direction: column; gap: var(--sp-3);
+    }
+    .tweaks h4 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 600; }
+    .tweaks .sw { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+    .tweaks .sw input { accent-color: var(--accent); }
+    .tweaks .inp { width: 100%; }
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; z-index: 950;
+      background: var(--surface-2); border: 1px solid var(--border-default);
+      padding: 10px 14px; border-radius: var(--radius); font-size: 13px;
+      box-shadow: var(--shadow-drawer);
+      opacity: 0; transform: translateY(8px); transition: 0.22s ease; pointer-events: none;
+      max-width: 380px;
+    }
+    .toast.show { opacity: 1; transform: none; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="kicker">Open Perf Lab · design prototype</div>
+    <h1>Notification channels &amp; report templates</h1>
+    <p class="sub">
+      Two additions to the Perf Lab console. Left: the single &ldquo;Webhook on/off&rdquo; pill becomes a
+      three-channel status strip with a per-run delivery history, where an unconfigured channel says
+      so in plain words instead of looking like it works. Right: named report/trend layouts an operator
+      saves once and reuses for exports.
+    </p>
+
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" aria-selected="true" data-view="run">Run &amp; scale</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-view="results">Results · export</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-view="trends">Trends</button>
+    </div>
+
+    <!-- ================= SCREEN A ================= -->
+    <section id="view-run" data-screen-label="run-scale-notifications">
+      <div class="panel">
+        <div class="panel-h">
+          <h2>Notification channels</h2>
+          <span class="spacer"></span>
+          <span id="mode-badge"></span>
+          <span id="filter-badge"></span>
+        </div>
+        <div class="panel-b stack">
+          <div class="mode-bar" id="mode-bar">
+            <span class="lbl">Delivery mode</span>
+            <span id="mode-bar-badge"></span>
+            <span class="mode-note" id="mode-bar-note"></span>
+          </div>
+          <div>
+            <p class="hint" style="margin-bottom:8px">
+              Sent when a run reaches a terminal status. Click a channel to pin its details and filter the
+              history below; hover for the redacted target.
+            </p>
+            <div class="chan-strip" id="chan-strip"></div>
+          </div>
+          <p class="hint" id="chan-foot"></p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">
+          <h2>Notification history</h2>
+          <span class="spacer"></span>
+          <span class="hint" id="hist-count"></span>
+          <button type="button" class="btn ghost" id="hist-reset">Reset filters</button>
+        </div>
+        <div class="filter-row">
+          <div class="filter-grp" id="f-chan"><span class="lbl">Channel</span></div>
+          <div class="filter-grp" id="f-status"><span class="lbl">Status</span></div>
+        </div>
+        <div class="panel-b flush">
+          <div class="tbl-wrap" id="hist-table"></div>
+        </div>
+        <div class="panel-b" style="border-top:1px solid var(--border-subtle)">
+          <p class="hint">
+            History is a record of attempts already made. It does not change when configuration changes —
+            a row that says <span class="mono">skipped</span> stays skipped.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SCREEN B — results / export ================= -->
+    <section id="view-results" hidden data-screen-label="results-export-templates">
+      <div class="kpis">
+        <div class="kpi"><div class="label">Requests</div><div class="val">12 480</div></div>
+        <div class="kpi"><div class="label">p50 ms</div><div class="val">42</div></div>
+        <div class="kpi"><div class="label">p95 ms</div><div class="val">186</div></div>
+        <div class="kpi"><div class="label">Error rate</div><div class="val">0.4%</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">
+          <h2>Active run · <span class="mono" id="active-run" style="font-weight:400;color:var(--text-secondary)"></span></h2>
+          <span class="badge ok"><span class="dot"></span>completed</span>
+          <span class="spacer"></span>
+          <div class="tmpl-bar">
+            <span class="lbl">Report template</span>
+            <select class="inp" id="sel-report" aria-label="Report template"></select>
+            <button type="button" class="btn ghost" id="save-report-tmpl">Save as template…</button>
+            <button type="button" class="btn ghost" id="manage-report-tmpl">Manage</button>
+          </div>
+        </div>
+        <div class="panel-b stack">
+          <div class="tmpl-sum" id="report-sum"></div>
+          <div>
+            <p class="export-label" id="report-export-label"></p>
+            <div class="btn-row" style="margin-top:8px">
+              <button type="button" class="btn" data-dl="html">Export HTML</button>
+              <button type="button" class="btn" data-dl="pdf">Export PDF</button>
+              <button type="button" class="btn primary" data-dl="pack">Bench pack ZIP</button>
+              <button type="button" class="btn ghost" data-dl="json">Report JSON</button>
+              <button type="button" class="btn ghost" data-dl="csv">Report CSV</button>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <p class="hint" style="margin-bottom:8px">Sections in the exported report</p>
+              <div class="sect-list" id="report-sections"></div>
+            </div>
+            <div>
+              <p class="hint" style="margin-bottom:8px">Bench pack contents</p>
+              <div class="pack-preview" id="pack-tree"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SCREEN B — trends ================= -->
+    <section id="view-trends" hidden data-screen-label="trends-templates">
+      <div class="panel">
+        <div class="panel-h">
+          <h2>Scenario trends · <span class="mono" style="font-weight:400;color:var(--text-secondary)">checkout_flow</span></h2>
+          <span class="spacer"></span>
+          <div class="tmpl-bar">
+            <span class="lbl">Trend template</span>
+            <select class="inp" id="sel-trend" aria-label="Trend template"></select>
+            <button type="button" class="btn ghost" id="save-trend-tmpl">Save as template…</button>
+            <button type="button" class="btn ghost" id="manage-trend-tmpl">Manage</button>
+          </div>
+        </div>
+        <div class="panel-b">
+          <div class="tmpl-sum" id="trend-sum"></div>
+        </div>
+      </div>
+
+      <div class="kpis" id="trend-kpis"></div>
+
+      <div class="grid-2" id="trend-charts">
+        <div class="panel" id="w-latency_band">
+          <div class="panel-h"><h2>Latency band</h2><span class="spacer"></span><span class="hint" id="band-metrics"></span></div>
+          <div class="panel-b">
+            <div class="chart-wrap">
+              <svg id="band-chart" viewBox="0 0 520 190" width="100%" height="190" role="img" aria-label="Latency trend across runs"></svg>
+              <div class="legend" id="band-legend"></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel" id="w-error_bars">
+          <div class="panel-h"><h2>Error bars</h2></div>
+          <div class="panel-b">
+            <div class="chart-wrap"><div class="bars" id="err-bars"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="w-runs_table">
+        <div class="panel-h"><h2>Runs</h2><span class="spacer"></span><span class="hint" id="runs-window"></span></div>
+        <div class="panel-b flush"><div class="tbl-wrap" id="trend-table"></div></div>
+      </div>
+
+      <div class="panel" id="trend-nowidgets" hidden>
+        <div class="empty">
+          <div class="big">This template has no widgets selected</div>
+          <div class="small">Open the template editor and check at least one widget to render something here.</div>
+          <button type="button" class="btn" id="open-editor-empty">Edit template</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= template editor ================= -->
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
+    <div class="modal-h">
+      <h3 id="modal-title">Report &amp; trend templates</h3>
+      <span class="spacer" style="margin-left:auto"></span>
+      <button type="button" class="btn ghost" id="ed-close" aria-label="Close">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="tmpl-list" id="ed-list"></div>
+      <div class="editor" id="ed-form">
+        <div class="field">
+          <label for="ed-name">Name</label>
+          <input class="inp" id="ed-name" type="text" placeholder="e.g. Weekly exec summary" />
+          <span class="help" id="ed-scope"></span>
+        </div>
+        <div class="field">
+          <label>Kind</label>
+          <div class="seg" id="ed-kind">
+            <button type="button" data-kind="report">report</button>
+            <button type="button" data-kind="trend">trend</button>
+          </div>
+          <span class="help" id="ed-kind-help"></span>
+        </div>
+        <div class="field">
+          <label>Widgets</label>
+          <div class="chip-wrap" id="ed-widgets"></div>
+          <span class="help" id="ed-widgets-help"></span>
+        </div>
+        <div class="field">
+          <label>Metrics</label>
+          <div class="chip-wrap" id="ed-metrics"></div>
+          <span class="help">Applied to every widget that can show a metric.</span>
+        </div>
+        <div class="field-2" id="ed-window"></div>
+        <p class="err-line" id="ed-err" hidden></p>
+      </div>
+    </div>
+    <div class="modal-f">
+      <button type="button" class="btn danger" id="ed-delete">Delete</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn ghost" id="ed-cancel">Cancel</button>
+      <button type="button" class="btn primary" id="ed-save">Save template</button>
+    </div>
+  </div>
+
+  <!-- ================= prototype tweaks ================= -->
+  <button type="button" class="btn tweaks-toggle" id="tweaks-toggle">Tweaks</button>
+  <div class="tweaks" id="tweaks" hidden>
+    <h4>Prototype state</h4>
+    <div class="field">
+      <label for="tw-mode">Delivery mode</label>
+      <select class="inp" id="tw-mode">
+        <option value="deliver">deliver</option>
+        <option value="log">log</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="tw-filter">Status filter</label>
+      <select class="inp" id="tw-filter">
+        <option value="failed,cancelled">failed,cancelled</option>
+        <option value="terminal">terminal</option>
+        <option value="failed">failed</option>
+      </select>
+    </div>
+    <div>
+      <h4 style="margin-bottom:6px">Configured channels</h4>
+      <label class="sw"><input type="checkbox" id="tw-webhook" checked /> Webhook</label>
+      <label class="sw"><input type="checkbox" id="tw-chat" checked /> Chat</label>
+      <label class="sw"><input type="checkbox" id="tw-email" /> Email</label>
+    </div>
+    <p class="hint">In the product these come from the API — this panel only exists so both states are reviewable.</p>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    /* ---------------------------------------------------------------- data */
+
+    var CHANNELS = [
+      {
+        id: "webhook", name: "Webhook", kind: "raw JSON POST",
+        target: "https://hooks.internal.example", signed: true,
+        signNote: "signed · HMAC-SHA256 header",
+        payload: "One JSON object per run: id, scenario, status, KPIs.",
+        reason: "no webhook URL set on opl-api"
+      },
+      {
+        id: "chat", name: "Chat", kind: "chat message payload",
+        target: "https://chat.internal.example", signed: false,
+        signNote: "not signed",
+        payload: "Chat incoming-webhook message payload (text + fields).",
+        reason: "no incoming-webhook URL set on opl-api"
+      },
+      {
+        id: "email", name: "Email", kind: "SMTP",
+        target: "smtp.example.com:587", recipients: "3 recipients", signed: false,
+        signNote: "not signed",
+        payload: "Plain-text summary, one message per terminal run.",
+        reason: "no SMTP host set on opl-api"
+      }
+    ];
+
+    var HISTORY = [
+      { t: "14:12:07", run: "run_7f3a91", st: "sent",    ch: "webhook", tgt: "https://hooks.internal.example", d: "HTTP 202 · 141 ms · signed" },
+      { t: "14:12:07", run: "run_7f3a91", st: "sent",    ch: "chat",    tgt: "https://chat.internal.example",  d: "HTTP 200 · 96 ms" },
+      { t: "14:12:07", run: "run_7f3a91", st: "skipped", ch: "email",   tgt: "—",                              d: "not configured — no SMTP host set on opl-api" },
+      { t: "13:48:22", run: "run_6b12ce", st: "failed",  ch: "webhook", tgt: "https://hooks.internal.example", d: "HTTP 503 from destination · 2 attempts · gave up" },
+      { t: "13:48:22", run: "run_6b12ce", st: "sent",    ch: "chat",    tgt: "https://chat.internal.example",  d: "HTTP 200 · 88 ms" },
+      { t: "13:48:22", run: "run_6b12ce", st: "skipped", ch: "email",   tgt: "—",                              d: "not configured — no SMTP host set on opl-api" },
+      { t: "12:31:55", run: "run_5d09b4", st: "sent",    ch: "webhook", tgt: "https://hooks.internal.example", d: "HTTP 202 · 118 ms · signed" },
+      { t: "12:31:55", run: "run_5d09b4", st: "failed",  ch: "chat",    tgt: "https://chat.internal.example",  d: "HTTP 404 · incoming-webhook URL rejected" },
+      { t: "11:57:03", run: "run_4c8821", st: "logged",  ch: "webhook", tgt: "https://hooks.internal.example", d: "mode=log — payload written to the opl-api log, nothing sent" },
+      { t: "11:57:03", run: "run_4c8821", st: "logged",  ch: "chat",    tgt: "https://chat.internal.example",  d: "mode=log — payload written to the opl-api log, nothing sent" },
+      { t: "11:02:48", run: "run_2a77d0", st: "sent",    ch: "webhook", tgt: "https://hooks.internal.example", d: "HTTP 202 · 133 ms · signed" },
+      { t: "11:02:48", run: "run_2a77d0", st: "skipped", ch: "chat",    tgt: "—",                              d: "not configured at the time — no incoming-webhook URL" },
+      { t: "10:44:12", run: "run_1f60a9", st: "failed",  ch: "webhook", tgt: "https://hooks.internal.example", d: "connect timeout after 5 000 ms · 3 attempts" },
+      { t: "09:38:40", run: "run_0b41f7", st: "sent",    ch: "webhook", tgt: "https://hooks.internal.example", d: "HTTP 202 · 152 ms · signed" },
+      { t: "09:38:40", run: "run_0b41f7", st: "sent",    ch: "chat",    tgt: "https://chat.internal.example",  d: "HTTP 200 · 104 ms" },
+      { t: "08:15:29", run: "run_9e2c03", st: "skipped", ch: "email",   tgt: "—",                              d: "not configured — no SMTP host set on opl-api" }
+    ];
+
+    var ST_META = {
+      sent:    { cls: "ok",   label: "sent",    note: "the destination accepted it" },
+      failed:  { cls: "err",  label: "failed",  note: "configured, but the destination errored" },
+      logged:  { cls: "info", label: "logged",  note: "mode=log — intentional no-send" },
+      skipped: { cls: "mute", label: "skipped", note: "channel not configured, nothing was sent" }
+    };
+
+    var REPORT_WIDGETS = [
+      { id: "kpis",    ds: "Headline KPI tiles" },
+      { id: "steps",   ds: "Per-step latency table" },
+      { id: "errors",  ds: "Error breakdown by type and step" },
+      { id: "samples", ds: "Raw sample rows, up to the sample cap" },
+      { id: "summary", ds: "Prose summary and SLA verdict" }
+    ];
+    var TREND_WIDGETS = [
+      { id: "latency_band", ds: "p50 / p95 / p99 lines across runs" },
+      { id: "error_bars",   ds: "Error rate per run" },
+      { id: "kpis",         ds: "Window KPI tiles" },
+      { id: "runs_table",   ds: "One row per run in the window" }
+    ];
+    var METRICS = ["p50_ms", "p95_ms", "p99_ms", "avg_ms", "error_rate", "samples"];
+    var METRIC_LABEL = { p50_ms: "p50", p95_ms: "p95", p99_ms: "p99", avg_ms: "avg", error_rate: "err %", samples: "N" };
+
+    var TEMPLATES = [
+      { id: "t1", name: "Weekly exec summary", kind: "report",
+        widgets: ["kpis", "summary"], metrics: ["p95_ms", "error_rate"], cap: 200 },
+      { id: "t2", name: "Full engineering report", kind: "report",
+        widgets: ["kpis", "steps", "errors", "samples", "summary"],
+        metrics: ["p50_ms", "p95_ms", "p99_ms", "avg_ms", "error_rate", "samples"], cap: 5000 },
+      { id: "t3", name: "Release trend", kind: "trend",
+        widgets: ["latency_band", "kpis", "runs_table"],
+        metrics: ["p50_ms", "p95_ms", "p99_ms", "error_rate"], limit: 30, sla: 300 },
+      { id: "t4", name: "Error watch", kind: "trend",
+        widgets: ["error_bars", "runs_table"], metrics: ["error_rate", "samples"], limit: 20, sla: 500 }
+    ];
+
+    var RUNS = [
+      { id: "run_0b41f7", status: "completed", p50_ms: 38, p95_ms: 142, p99_ms: 220, avg_ms: 61, error_rate: 0.2, samples: 11820, t: "2d ago" },
+      { id: "run_9e2c03", status: "completed", p50_ms: 40, p95_ms: 155, p99_ms: 240, avg_ms: 64, error_rate: 0.3, samples: 11960, t: "2d ago" },
+      { id: "run_1f60a9", status: "failed",    p50_ms: 55, p95_ms: 410, p99_ms: 680, avg_ms: 118, error_rate: 4.1, samples: 6240, t: "1d ago" },
+      { id: "run_2a77d0", status: "completed", p50_ms: 41, p95_ms: 168, p99_ms: 250, avg_ms: 66, error_rate: 0.5, samples: 12010, t: "1d ago" },
+      { id: "run_4c8821", status: "completed", p50_ms: 39, p95_ms: 160, p99_ms: 235, avg_ms: 63, error_rate: 0.4, samples: 12180, t: "18h ago" },
+      { id: "run_5d09b4", status: "completed", p50_ms: 44, p95_ms: 198, p99_ms: 310, avg_ms: 72, error_rate: 0.8, samples: 12240, t: "12h ago" },
+      { id: "run_6b12ce", status: "completed", p50_ms: 42, p95_ms: 186, p99_ms: 280, avg_ms: 69, error_rate: 0.4, samples: 12480, t: "3h ago" },
+      { id: "run_7f3a91", status: "completed", p50_ms: 40, p95_ms: 172, p99_ms: 265, avg_ms: 66, error_rate: 0.3, samples: 12310, t: "1h ago" }
+    ];
+
+    var SCOPE = "default-org / default-project";
+
+    /* --------------------------------------------------------------- state */
+
+    var state = {
+      tab: "run",
+      mode: "deliver",
+      statusFilter: "failed,cancelled",
+      configured: { webhook: true, chat: true, email: false },
+      pinned: null,
+      histChan: "all",
+      histStatus: "all",
+      reportTmpl: "t1",
+      trendTmpl: "t3",
+      activeRun: "run_7f3a91",
+      editor: { open: false, id: null, draft: null, err: "" }
+    };
+
+    /* ------------------------------------------------------------- helpers */
+
+    var $ = function (id) { return document.getElementById(id); };
+    function esc(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function badge(cls, text) {
+      return '<span class="badge ' + cls + '"><span class="dot"></span>' + esc(text) + "</span>";
+    }
+    function tmplById(id) {
+      for (var i = 0; i < TEMPLATES.length; i++) { if (TEMPLATES[i].id === id) return TEMPLATES[i]; }
+      return null;
+    }
+    function byKind(kind) {
+      return TEMPLATES.filter(function (t) { return t.kind === kind; });
+    }
+    function toast(msg) {
+      var el = $("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(el._t);
+      el._t = setTimeout(function () { el.classList.remove("show"); }, 2400);
+    }
+    function chanById(id) {
+      for (var i = 0; i < CHANNELS.length; i++) { if (CHANNELS[i].id === id) return CHANNELS[i]; }
+      return null;
+    }
+
+    /* ------------------------------------------------- screen A · channels */
+
+    function renderModeBits() {
+      var isLog = state.mode === "log";
+      $("mode-badge").innerHTML = isLog
+        ? badge("warn", "mode: log")
+        : badge("accent", "mode: deliver");
+      $("filter-badge").innerHTML = '<span class="badge plain"><span class="dot"></span>on ' + esc(state.statusFilter) + "</span>";
+
+      var bar = $("mode-bar");
+      bar.className = "mode-bar" + (isLog ? " is-log" : "");
+      $("mode-bar-badge").innerHTML = isLog ? badge("warn", "log") : badge("accent", "deliver");
+      $("mode-bar-note").textContent = isLog
+        ? "Payloads are built and written to the opl-api log. Nothing is sent to any destination."
+        : "Payloads are sent to every configured channel when a run reaches " + state.statusFilter + ".";
+    }
+
+    function renderChannels() {
+      var isLog = state.mode === "log";
+      var html = CHANNELS.map(function (c) {
+        var on = state.configured[c.id];
+        var cls = "chan " + (!on ? "is-off" : isLog ? "is-log" : "is-on");
+        if (state.pinned === c.id) cls += " is-expanded";
+        var stateLine, stateBadge;
+        if (!on) {
+          stateBadge = badge("mute", "not configured");
+          stateLine = "not configured — " + c.reason;
+        } else if (isLog) {
+          stateBadge = badge("warn", "configured · log");
+          stateLine = "configured, not sending — mode is log";
+        } else {
+          stateBadge = badge("ok", "configured");
+          stateLine = "configured and sending";
+        }
+        var tgt = c.id === "email"
+          ? c.target + " · " + c.recipients
+          : c.target;
+        var detail =
+          '<span class="chan-meta">' +
+            '<span><span class="k">Target</span> ' + (on ? "<code>" + esc(tgt) + "</code>" : '<span style="color:var(--text-disabled)">none</span>') + "</span>" +
+            '<span><span class="k">Payload</span> ' + esc(c.payload) + "</span>" +
+            '<span><span class="k">Signing</span> ' + esc(on ? c.signNote : "n/a") + "</span>" +
+          "</span>";
+        return (
+          '<button type="button" class="' + cls + '" data-chan="' + c.id + '" aria-pressed="' + (state.pinned === c.id) + '">' +
+            '<span class="chan-top">' +
+              '<span class="chan-name">' + esc(c.name) + "</span>" +
+              stateBadge +
+              '<span class="chan-kind">' + esc(c.kind) + "</span>" +
+            "</span>" +
+            '<span class="chan-state">' + esc(stateLine) + "</span>" +
+            (state.pinned === c.id ? detail : "") +
+            '<span class="chan-pop">' + detail +
+              '<span class="hint" style="display:block;margin-top:6px">Host only — no path, token or credential is shown.</span>' +
+            "</span>" +
+          "</button>"
+        );
+      }).join("");
+      $("chan-strip").innerHTML = html;
+
+      var offCount = CHANNELS.filter(function (c) { return !state.configured[c.id]; }).length;
+      $("chan-foot").innerHTML =
+        (offCount
+          ? offCount + " of " + CHANNELS.length + (offCount === 1 ? " channels is" : " channels are") +
+            " not configured. Unconfigured channels are listed with the reason rather than hidden — nothing is sent on them."
+          : "All " + CHANNELS.length + " channels are configured.") +
+        (isLog ? " Mode is <span class=\"mono\">log</span>, so no channel sends while it stays that way." : "");
+    }
+
+    /* -------------------------------------------------- screen A · history */
+
+    function visibleHistory() {
+      return HISTORY.filter(function (r) {
+        if (state.histChan !== "all" && r.ch !== state.histChan) return false;
+        if (state.histStatus !== "all" && r.st !== state.histStatus) return false;
+        return true;
+      });
+    }
+
+    function renderFilters() {
+      var chanCounts = { all: HISTORY.length };
+      var stCounts = { all: HISTORY.length };
+      HISTORY.forEach(function (r) {
+        chanCounts[r.ch] = (chanCounts[r.ch] || 0) + 1;
+        stCounts[r.st] = (stCounts[r.st] || 0) + 1;
+      });
+      var cw = $("f-chan");
+      cw.innerHTML = '<span class="lbl">Channel</span>' +
+        [["all", "All"]].concat(CHANNELS.map(function (c) { return [c.id, c.name]; })).map(function (p) {
+          return '<button type="button" class="chip" data-fchan="' + p[0] + '" aria-pressed="' +
+            (state.histChan === p[0]) + '">' + esc(p[1]) +
+            '<span class="n">' + (chanCounts[p[0]] || 0) + "</span></button>";
+        }).join("");
+      var sw = $("f-status");
+      sw.innerHTML = '<span class="lbl">Status</span>' +
+        [["all", "All"], ["sent", "sent"], ["failed", "failed"], ["logged", "logged"], ["skipped", "skipped"]].map(function (p) {
+          return '<button type="button" class="chip" data-fst="' + p[0] + '" aria-pressed="' +
+            (state.histStatus === p[0]) + '">' + esc(p[1]) +
+            '<span class="n">' + (stCounts[p[0]] || 0) + "</span></button>";
+        }).join("");
+    }
+
+    function renderHistory() {
+      var rows = visibleHistory();
+      $("hist-count").textContent = rows.length + " of " + HISTORY.length + " attempts";
+      if (!rows.length) {
+        $("hist-table").innerHTML =
+          '<div class="empty">' +
+            '<div class="big">No delivery attempts recorded yet</div>' +
+            '<div class="small">Nothing matches this filter. Attempts appear here once a run reaches a terminal status.</div>' +
+          "</div>";
+        return;
+      }
+      var body = rows.map(function (r) {
+        var m = ST_META[r.st];
+        var chan = chanById(r.ch);
+        var isMuted = r.st === "skipped";
+        return "<tr>" +
+          '<td class="mono">' + esc(r.t) + "</td>" +
+          '<td><button type="button" class="link-run" data-run="' + esc(r.run) + '">' + esc(r.run) + "</button></td>" +
+          "<td>" + badge(m.cls, m.label) + "</td>" +
+          "<td>" + esc(chan ? chan.name : r.ch) + "</td>" +
+          '<td class="mono" style="color:' + (r.tgt === "—" ? "var(--text-disabled)" : "var(--text-secondary)") + '">' + esc(r.tgt) + "</td>" +
+          '<td class="detail' + (isMuted ? " is-muted" : "") + '">' + esc(r.d) + "</td>" +
+        "</tr>";
+      }).join("");
+      $("hist-table").innerHTML =
+        "<table><thead><tr>" +
+          "<th>Time</th><th>Run</th><th>Status</th><th>Channel</th><th>Target</th><th>Detail</th>" +
+        "</tr></thead><tbody>" + body + "</tbody></table>";
+    }
+
+    /* ------------------------------------------------- screen B · summary */
+
+    function summaryHTML(t, kind) {
+      if (!t) {
+        return '<div class="line"><span class="k">Template</span><span class="v">' +
+          (kind === "trend"
+            ? "no template — full trend: every widget, every metric, default window of 20 runs."
+            : "no template — full report: every section, every metric.") +
+          "</span></div>" +
+          '<div class="scope-note">Templates are saved for ' + esc(SCOPE) + ".</div>";
+      }
+      var win = t.kind === "trend"
+        ? "last " + t.limit + " runs · SLA p95 " + t.sla + " ms"
+        : "sample cap " + t.cap + " rows";
+      return '' +
+        '<div class="line"><span class="k">Template</span><span class="v" style="color:var(--text-primary)">' + esc(t.name) + "</span>" +
+          badge("plain", t.kind) + "</div>" +
+        '<div class="line"><span class="k">Widgets</span><span class="v"><code>' + t.widgets.join(", ") + "</code></span></div>" +
+        '<div class="line"><span class="k">Metrics</span><span class="v"><code>' + t.metrics.join(", ") + "</code></span></div>" +
+        '<div class="line"><span class="k">Window</span><span class="v">' + esc(win) + "</span></div>" +
+        '<div class="scope-note">Saved for ' + esc(SCOPE) + ".</div>";
+    }
+
+    function renderPickers() {
+      function fill(sel, kind, current) {
+        var opts = '<option value="">no template — full ' + (kind === "trend" ? "trend" : "report") + "</option>";
+        opts += byKind(kind).map(function (t) {
+          return '<option value="' + t.id + '"' + (t.id === current ? " selected" : "") + ">" + esc(t.name) + "</option>";
+        }).join("");
+        sel.innerHTML = opts;
+        sel.value = current || "";
+      }
+      fill($("sel-report"), "report", state.reportTmpl);
+      fill($("sel-trend"), "trend", state.trendTmpl);
+    }
+
+    /* ------------------------------------------------- screen B · results */
+
+    function renderResults() {
+      var t = tmplById(state.reportTmpl);
+      $("active-run").textContent = state.activeRun;
+      $("report-sum").innerHTML = summaryHTML(t, "report");
+
+      $("report-export-label").innerHTML = t
+        ? "<strong>Export HTML / PDF / bench pack ZIP</strong> — using template " +
+          '<span class="tname">&lsquo;' + esc(t.name) + "&rsquo;</span>"
+        : '<strong>Export HTML / PDF / bench pack ZIP</strong> — <span class="tnone">no template — full report</span>';
+
+      var picked = t ? t.widgets : REPORT_WIDGETS.map(function (w) { return w.id; });
+      $("report-sections").innerHTML = REPORT_WIDGETS.map(function (w) {
+        var inn = picked.indexOf(w.id) !== -1;
+        return '<div class="sect' + (inn ? "" : " is-out") + '">' +
+          '<span class="nm">' + w.id + "</span>" +
+          '<span class="ds">' + esc(w.ds) + "</span>" +
+          (inn ? badge("ok", "in report") : badge("mute", "excluded")) +
+        "</div>";
+      }).join("");
+
+      var files = ["report.json", "report.csv", "report.html", "report.pdf"];
+      if (picked.indexOf("samples") !== -1) files.push("samples.csv");
+      if (picked.indexOf("errors") !== -1) files.push("errors.csv");
+      if (picked.indexOf("steps") !== -1) files.push("steps.csv");
+      files.push("MANIFEST.txt");
+      var dir = "opl-bench-" + state.activeRun + "/";
+      $("pack-tree").textContent = dir + "\n" + files.map(function (f, i) {
+        return (i === files.length - 1 ? "└── " : "├── ") + f;
+      }).join("\n") +
+      "\n\n" + (t ? "template: " + t.name + " (cap " + t.cap + ")" : "template: none (full report)");
+    }
+
+    /* -------------------------------------------------- screen B · trends */
+
+    function renderTrends() {
+      var t = tmplById(state.trendTmpl);
+      var widgets = t ? t.widgets : TREND_WIDGETS.map(function (w) { return w.id; });
+      var metrics = t ? t.metrics : METRICS.slice();
+      var limit = t ? t.limit : 20;
+      var sla = t ? t.sla : 300;
+
+      $("trend-sum").innerHTML = summaryHTML(t, "trend");
+
+      var has = function (w) { return widgets.indexOf(w) !== -1; };
+      $("trend-nowidgets").hidden = widgets.length !== 0;
+
+      /* kpis */
+      var kpiHost = $("trend-kpis");
+      kpiHost.hidden = !has("kpis");
+      if (has("kpis")) {
+        var p95s = RUNS.map(function (r) { return r.p95_ms; });
+        var tiles = [{ l: "Runs in window", v: RUNS.length, f: "limit " + limit }];
+        if (metrics.indexOf("p95_ms") !== -1) {
+          var best = Math.min.apply(null, p95s), worst = Math.max.apply(null, p95s);
+          var bestRun = RUNS.filter(function (r) { return r.p95_ms === best; })[0];
+          var worstRun = RUNS.filter(function (r) { return r.p95_ms === worst; })[0];
+          tiles.push({ l: "Best p95", v: best, f: bestRun.id });
+          tiles.push({ l: "Worst p95", v: worst, f: worstRun.id });
+          tiles.push({ l: "SLA breaches", v: p95s.filter(function (v) { return v > sla; }).length, f: "p95 > " + sla + " ms" });
+        }
+        if (metrics.indexOf("error_rate") !== -1 && tiles.length < 4) {
+          var we = Math.max.apply(null, RUNS.map(function (r) { return r.error_rate; }));
+          tiles.push({ l: "Worst error rate", v: we + "%", f: "across window" });
+        }
+        if (metrics.indexOf("samples") !== -1 && tiles.length < 4) {
+          var tot = RUNS.reduce(function (a, r) { return a + r.samples; }, 0);
+          tiles.push({ l: "Samples", v: tot.toLocaleString("en-US").replace(/,/g, " "), f: "window total" });
+        }
+        kpiHost.innerHTML = tiles.slice(0, 4).map(function (k) {
+          return '<div class="kpi"><div class="label">' + esc(k.l) + '</div><div class="val">' + esc(k.v) +
+            '</div><div class="foot">' + esc(k.f) + "</div></div>";
+        }).join("");
+      }
+
+      /* charts */
+      $("w-latency_band").hidden = !has("latency_band");
+      $("w-error_bars").hidden = !has("error_bars");
+      $("trend-charts").hidden = !has("latency_band") && !has("error_bars");
+      $("trend-charts").style.gridTemplateColumns =
+        (has("latency_band") && has("error_bars")) ? "" : "1fr";
+
+      if (has("latency_band")) drawBand(metrics, sla);
+      if (has("error_bars")) drawBars();
+
+      /* table */
+      $("w-runs_table").hidden = !has("runs_table");
+      if (has("runs_table")) {
+        $("runs-window").textContent = "last " + limit + " runs · " + RUNS.length + " available";
+        var cols = metrics.filter(function (m) { return METRIC_LABEL[m]; });
+        var head = "<tr><th>Run</th><th>Status</th>" +
+          cols.map(function (m) { return '<th class="num">' + METRIC_LABEL[m] + "</th>"; }).join("") +
+          "<th>Started</th></tr>";
+        var body = RUNS.slice().reverse().map(function (r) {
+          var tone = r.status === "failed" ? "err" : r.p95_ms > sla ? "warn" : "plain";
+          return "<tr>" +
+            '<td><button type="button" class="link-run" data-run="' + r.id + '">' + r.id + "</button></td>" +
+            "<td>" + badge(tone, r.status) + "</td>" +
+            cols.map(function (m) {
+              var v = r[m];
+              return '<td class="num">' + (m === "error_rate" ? v + "%" : m === "samples" ? String(v).replace(/\B(?=(\d{3})+(?!\d))/g, " ") : v) + "</td>";
+            }).join("") +
+            "<td>" + r.t + "</td>" +
+          "</tr>";
+        }).join("");
+        $("trend-table").innerHTML = "<table><thead>" + head + "</thead><tbody>" + body + "</tbody></table>";
+      }
+    }
+
+    function drawBand(metrics, sla) {
+      var svg = $("band-chart");
+      /* Fit the drawing to the panel it actually got: the band chart is full width
+         when error_bars is off, half width when it is on. A fixed viewBox would
+         letterbox itself and leave dead space on one side. */
+      var avail = svg.parentElement ? svg.parentElement.clientWidth - 24 : 0;
+      var w = avail > 320 ? Math.round(avail) : 520;
+      var h = 190, pad = { t: 14, r: 12, b: 26, l: 42 };
+      svg.setAttribute("viewBox", "0 0 " + w + " " + h);
+      var iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+      var keys = ["p50_ms", "p95_ms", "p99_ms"].filter(function (k) { return metrics.indexOf(k) !== -1; });
+      var colors = { p50_ms: "#2FD98A", p95_ms: "#F5C451", p99_ms: "#FF5C6C" };
+      var vals = [sla];
+      RUNS.forEach(function (r) { keys.forEach(function (k) { vals.push(r[k]); }); });
+      var max = Math.max.apply(null, vals) * 1.1 || 100;
+      var x = function (i) { return pad.l + (i / (RUNS.length - 1)) * iw; };
+      var y = function (v) { return pad.t + ih - (v / max) * ih; };
+
+      var gridLines = "";
+      for (var g = 0; g <= 3; g++) {
+        var gv = (max / 3) * g;
+        var gy = y(gv);
+        gridLines += '<line x1="' + pad.l + '" y1="' + gy.toFixed(1) + '" x2="' + (w - pad.r) + '" y2="' + gy.toFixed(1) +
+          '" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>' +
+          '<text x="' + (pad.l - 6) + '" y="' + (gy + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="#66748C" font-family="ui-monospace,monospace">' +
+          Math.round(gv) + "</text>";
+      }
+      var lines = keys.map(function (k) {
+        var d = RUNS.map(function (r, i) { return (i ? "L" : "M") + x(i).toFixed(1) + "," + y(r[k]).toFixed(1); }).join("");
+        return '<path d="' + d + '" fill="none" stroke="' + colors[k] + '" stroke-width="2" stroke-linejoin="round"/>';
+      }).join("");
+      var dots = keys.indexOf("p95_ms") !== -1
+        ? RUNS.map(function (r, i) { return '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(r.p95_ms).toFixed(1) + '" r="3" fill="#F5C451"/>'; }).join("")
+        : "";
+      svg.innerHTML = gridLines +
+        '<line x1="' + pad.l + '" y1="' + y(sla).toFixed(1) + '" x2="' + (w - pad.r) + '" y2="' + y(sla).toFixed(1) +
+        '" stroke="#17C0C0" stroke-dasharray="4 4" stroke-width="1"/>' + lines + dots;
+
+      $("band-legend").innerHTML = keys.map(function (k) {
+        var cls = k === "p50_ms" ? "leg-p50" : k === "p95_ms" ? "leg-p95" : "leg-p99";
+        return '<span class="' + cls + '">' + METRIC_LABEL[k] + "</span>";
+      }).join("") + '<span class="leg-sla">SLA p95 ' + sla + "</span>";
+      $("band-metrics").textContent = keys.length
+        ? keys.map(function (k) { return METRIC_LABEL[k]; }).join(" · ")
+        : "no latency metric selected";
+    }
+
+    function drawBars() {
+      var host = $("err-bars");
+      var max = Math.max.apply(null, RUNS.map(function (r) { return r.error_rate; }).concat([0.1]));
+      host.innerHTML = RUNS.map(function (r) {
+        var pct = Math.max(6, (r.error_rate / max) * 100);
+        return '<div class="bar" style="height:' + pct.toFixed(1) + '%"><span class="tip">' +
+          r.id + " · " + r.error_rate + "%</span></div>";
+      }).join("");
+    }
+
+    /* ------------------------------------------------- template editor */
+
+    function blankDraft(kind) {
+      return kind === "trend"
+        ? { id: null, name: "", kind: "trend", widgets: ["latency_band", "runs_table"], metrics: ["p95_ms", "error_rate"], limit: 20, sla: 300 }
+        : { id: null, name: "", kind: "report", widgets: ["kpis", "summary"], metrics: ["p95_ms", "error_rate"], cap: 500 };
+    }
+
+    function openEditor(id, kind) {
+      var t = id ? tmplById(id) : null;
+      state.editor.open = true;
+      state.editor.err = "";
+      state.editor.id = t ? t.id : null;
+      state.editor.draft = t
+        ? { id: t.id, name: t.name, kind: t.kind, widgets: t.widgets.slice(), metrics: t.metrics.slice(), limit: t.limit, sla: t.sla, cap: t.cap }
+        : blankDraft(kind || "report");
+      if (!state.editor.draft.limit) state.editor.draft.limit = 20;
+      if (!state.editor.draft.sla) state.editor.draft.sla = 300;
+      if (!state.editor.draft.cap) state.editor.draft.cap = 500;
+      renderEditor();
+    }
+
+    function closeEditor() {
+      state.editor.open = false;
+      $("modal").hidden = true;
+      $("scrim").hidden = true;
+    }
+
+    function renderEditor() {
+      var open = state.editor.open;
+      $("modal").hidden = !open;
+      $("scrim").hidden = !open;
+      if (!open) return;
+      var d = state.editor.draft;
+
+      /* list */
+      var listHTML = "";
+      ["report", "trend"].forEach(function (kind) {
+        listHTML += '<div class="grp">' + kind + " templates</div>";
+        var items = byKind(kind);
+        if (!items.length) {
+          listHTML += '<div class="hint" style="padding:2px 8px 6px">none saved yet</div>';
+        }
+        listHTML += items.map(function (t) {
+          return '<button type="button" class="tmpl-item" data-edit="' + t.id + '" aria-current="' +
+            (state.editor.id === t.id) + '"><span>' + esc(t.name) + "</span>" +
+            '<span class="m">' + t.widgets.length + " widgets · " + t.metrics.length + " metrics</span></button>";
+        }).join("");
+      });
+      listHTML += '<button type="button" class="tmpl-item" data-new="report" style="margin-top:8px;border-color:var(--border-default)">' +
+        "<span>+ New report template</span></button>" +
+        '<button type="button" class="tmpl-item" data-new="trend" style="border-color:var(--border-default)">' +
+        "<span>+ New trend template</span></button>";
+      $("ed-list").innerHTML = listHTML;
+
+      /* form */
+      $("ed-name").value = d.name;
+      $("ed-scope").textContent = "Saved for " + SCOPE + ". Other projects do not see it.";
+      Array.prototype.forEach.call($("ed-kind").querySelectorAll("button"), function (b) {
+        b.className = b.dataset.kind === d.kind ? "active" : "";
+      });
+      $("ed-kind-help").textContent = d.kind === "trend"
+        ? "Multi-run scenario trend. Widgets and window apply across runs."
+        : "Per-run bench report. Widgets are sections of one run's report.";
+
+      var wdefs = d.kind === "trend" ? TREND_WIDGETS : REPORT_WIDGETS;
+      $("ed-widgets").innerHTML = wdefs.map(function (wd) {
+        var on = d.widgets.indexOf(wd.id) !== -1;
+        return '<button type="button" class="chip check" data-w="' + wd.id + '" aria-pressed="' + on + '" title="' + esc(wd.ds) + '">' +
+          '<span class="box">' + (on ? "✓" : "") + '</span><span class="mono">' + wd.id + "</span></button>";
+      }).join("");
+      $("ed-widgets-help").textContent = d.widgets.length
+        ? d.widgets.length + " selected · rendered in this order"
+        : "Nothing selected — the output would be empty.";
+
+      $("ed-metrics").innerHTML = METRICS.map(function (m) {
+        var on = d.metrics.indexOf(m) !== -1;
+        return '<button type="button" class="chip check" data-m="' + m + '" aria-pressed="' + on + '">' +
+          '<span class="box">' + (on ? "✓" : "") + '</span><span class="mono">' + m + "</span></button>";
+      }).join("");
+
+      $("ed-window").innerHTML = d.kind === "trend"
+        ? '<div class="field"><label for="ed-limit">Runs in window</label>' +
+            '<input class="inp" id="ed-limit" type="number" min="1" max="100" value="' + d.limit + '" />' +
+            '<span class="help">1–100 most recent runs for this scenario.</span></div>' +
+          '<div class="field"><label for="ed-sla">SLA p95 threshold (ms)</label>' +
+            '<input class="inp" id="ed-sla" type="number" min="1" step="10" value="' + d.sla + '" />' +
+            '<span class="help">Drawn as a dashed line, and counted as breaches.</span></div>'
+        : '<div class="field"><label for="ed-cap">Sample cap (rows)</label>' +
+            '<input class="inp" id="ed-cap" type="number" min="1" step="50" value="' + d.cap + '" />' +
+            '<span class="help">Caps the <span class="mono">samples</span> section. Ignored if that widget is off.</span></div>';
+
+      $("ed-delete").disabled = !state.editor.id;
+      $("ed-err").hidden = !state.editor.err;
+      $("ed-err").textContent = state.editor.err;
+      $("modal-title").textContent = state.editor.id ? "Edit template" : "New template";
+    }
+
+    function readWindowInputs() {
+      var d = state.editor.draft;
+      if (d.kind === "trend") {
+        var lim = parseInt($("ed-limit") ? $("ed-limit").value : d.limit, 10);
+        var sla = parseInt($("ed-sla") ? $("ed-sla").value : d.sla, 10);
+        d.limit = isNaN(lim) ? 20 : Math.min(100, Math.max(1, lim));
+        d.sla = isNaN(sla) ? 300 : Math.max(1, sla);
+      } else {
+        var cap = parseInt($("ed-cap") ? $("ed-cap").value : d.cap, 10);
+        d.cap = isNaN(cap) ? 500 : Math.max(1, cap);
+      }
+      d.name = $("ed-name").value;
+    }
+
+    function saveTemplate() {
+      readWindowInputs();
+      var d = state.editor.draft;
+      if (!d.name.trim()) { state.editor.err = "Name is required."; renderEditor(); return; }
+      if (!d.widgets.length) { state.editor.err = "Pick at least one widget, or the output is empty."; renderEditor(); return; }
+      state.editor.err = "";
+      var saved;
+      if (d.id) {
+        saved = tmplById(d.id);
+        saved.name = d.name.trim();
+        saved.kind = d.kind;
+        saved.widgets = d.widgets.slice();
+        saved.metrics = d.metrics.slice();
+        saved.limit = d.limit; saved.sla = d.sla; saved.cap = d.cap;
+      } else {
+        saved = {
+          id: "t" + (Date.now() % 100000), name: d.name.trim(), kind: d.kind,
+          widgets: d.widgets.slice(), metrics: d.metrics.slice(),
+          limit: d.limit, sla: d.sla, cap: d.cap
+        };
+        TEMPLATES.push(saved);
+      }
+      if (saved.kind === "trend") state.trendTmpl = saved.id; else state.reportTmpl = saved.id;
+      closeEditor();
+      render();
+      toast("Saved '" + saved.name + "' for " + SCOPE);
+    }
+
+    function deleteTemplate() {
+      var id = state.editor.id;
+      if (!id) return;
+      var t = tmplById(id);
+      TEMPLATES = TEMPLATES.filter(function (x) { return x.id !== id; });
+      if (state.reportTmpl === id) state.reportTmpl = "";
+      if (state.trendTmpl === id) state.trendTmpl = "";
+      closeEditor();
+      render();
+      toast("Deleted '" + (t ? t.name : id) + "'");
+    }
+
+    /* ---------------------------------------------------------- rendering */
+
+    function renderTabs() {
+      Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) {
+        b.setAttribute("aria-selected", String(b.dataset.view === state.tab));
+      });
+      $("view-run").hidden = state.tab !== "run";
+      $("view-results").hidden = state.tab !== "results";
+      $("view-trends").hidden = state.tab !== "trends";
+    }
+
+    function render() {
+      renderTabs();
+      renderModeBits();
+      renderChannels();
+      renderFilters();
+      renderHistory();
+      renderPickers();
+      renderResults();
+      renderTrends();
+      renderEditor();
+    }
+
+    /* ------------------------------------------------------------ events */
+
+    document.addEventListener("click", function (e) {
+      var el;
+
+      el = e.target.closest(".tab");
+      if (el) {
+        state.tab = el.dataset.view;
+        renderTabs();
+        /* charts can only measure themselves once their section is visible */
+        if (state.tab === "trends") renderTrends();
+        return;
+      }
+
+      el = e.target.closest("[data-chan]");
+      if (el) {
+        var cid = el.dataset.chan;
+        state.pinned = state.pinned === cid ? null : cid;
+        state.histChan = state.pinned || "all";
+        renderChannels(); renderFilters(); renderHistory();
+        return;
+      }
+
+      el = e.target.closest("[data-fchan]");
+      if (el) { state.histChan = el.dataset.fchan; state.pinned = null; renderChannels(); renderFilters(); renderHistory(); return; }
+
+      el = e.target.closest("[data-fst]");
+      if (el) { state.histStatus = el.dataset.fst; renderFilters(); renderHistory(); return; }
+
+      if (e.target.closest("#hist-reset")) {
+        state.histChan = "all"; state.histStatus = "all"; state.pinned = null;
+        renderChannels(); renderFilters(); renderHistory(); return;
+      }
+
+      el = e.target.closest("[data-run]");
+      if (el) {
+        state.activeRun = el.dataset.run;
+        state.tab = "results";
+        render();
+        toast("Opened " + el.dataset.run + " in Results");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+
+      el = e.target.closest("[data-dl]");
+      if (el) {
+        var t = tmplById(state.reportTmpl);
+        var suffix = t ? " using template '" + t.name + "'" : " (no template — full report)";
+        var map = { html: "Export HTML", pdf: "Export PDF", pack: "Bench pack ZIP", json: "Report JSON", csv: "Report CSV" };
+        toast(map[el.dataset.dl] + suffix);
+        return;
+      }
+
+      if (e.target.closest("#save-report-tmpl")) { openEditor(null, "report"); return; }
+      if (e.target.closest("#save-trend-tmpl")) { openEditor(null, "trend"); return; }
+      if (e.target.closest("#manage-report-tmpl")) { openEditor(state.reportTmpl || null, "report"); return; }
+      if (e.target.closest("#manage-trend-tmpl")) { openEditor(state.trendTmpl || null, "trend"); return; }
+      if (e.target.closest("#open-editor-empty")) { openEditor(state.trendTmpl || null, "trend"); return; }
+
+      el = e.target.closest("[data-edit]");
+      if (el) { readWindowInputs(); openEditor(el.dataset.edit); return; }
+
+      el = e.target.closest("[data-new]");
+      if (el) { openEditor(null, el.dataset.new); return; }
+
+      el = e.target.closest("#ed-kind button");
+      if (el) {
+        readWindowInputs();
+        var d = state.editor.draft;
+        if (d.kind !== el.dataset.kind) {
+          d.kind = el.dataset.kind;
+          d.widgets = blankDraft(d.kind).widgets.slice();
+        }
+        renderEditor();
+        return;
+      }
+
+      el = e.target.closest("[data-w]");
+      if (el) {
+        readWindowInputs();
+        var w = el.dataset.w, ws = state.editor.draft.widgets;
+        var i = ws.indexOf(w);
+        if (i === -1) ws.push(w); else ws.splice(i, 1);
+        renderEditor();
+        return;
+      }
+
+      el = e.target.closest("[data-m]");
+      if (el) {
+        readWindowInputs();
+        var m = el.dataset.m, ms = state.editor.draft.metrics;
+        var j = ms.indexOf(m);
+        if (j === -1) ms.push(m); else ms.splice(j, 1);
+        renderEditor();
+        return;
+      }
+
+      if (e.target.closest("#ed-save")) { saveTemplate(); return; }
+      if (e.target.closest("#ed-delete")) { deleteTemplate(); return; }
+      if (e.target.closest("#ed-cancel") || e.target.closest("#ed-close") || e.target.closest("#scrim")) { closeEditor(); return; }
+
+      if (e.target.closest("#tweaks-toggle")) {
+        var tw = $("tweaks");
+        tw.hidden = !tw.hidden;
+        return;
+      }
+    });
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && state.editor.open) closeEditor();
+    });
+
+    var rzT;
+    window.addEventListener("resize", function () {
+      clearTimeout(rzT);
+      rzT = setTimeout(function () { if (state.tab === "trends") renderTrends(); }, 120);
+    });
+
+    $("sel-report").addEventListener("change", function (e) {
+      state.reportTmpl = e.target.value;
+      renderResults();
+      toast(e.target.value ? "Report template applied" : "No template — full report");
+    });
+    $("sel-trend").addEventListener("change", function (e) {
+      state.trendTmpl = e.target.value;
+      renderTrends();
+      toast(e.target.value ? "Trend template applied" : "No template — default trend window");
+    });
+
+    $("tw-mode").addEventListener("change", function (e) {
+      state.mode = e.target.value;
+      renderModeBits(); renderChannels();
+    });
+    $("tw-filter").addEventListener("change", function (e) {
+      state.statusFilter = e.target.value;
+      renderModeBits();
+    });
+    ["webhook", "chat", "email"].forEach(function (id) {
+      $("tw-" + id).addEventListener("change", function (e) {
+        state.configured[id] = e.target.checked;
+        renderChannels();
+      });
+    });
+
+    render();
+  })();
+  </script>
+</body>
+</html>
