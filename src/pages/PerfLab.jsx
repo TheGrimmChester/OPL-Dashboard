@@ -20,6 +20,9 @@ import { fmtNum, fmtAgo } from '../theme/format'
 import { loadRunTracesHref, gatePassed } from '../utils/entityLinks'
 import VuTree, { getAtPath, patchStepAt, insertChildAt } from '../components/VuTree'
 import LoadCurveEditor from '../components/LoadCurveEditor'
+import NotifyChannels from '../components/NotifyChannels'
+import ReportTemplateBar, { AppliedTemplate, useReportTemplates } from '../components/ReportTemplateBar'
+import { useTenant } from '../contexts/TenantContext'
 import './PerfLab.css'
 
 function OpaTracesLink({ runId, children }) {
@@ -140,6 +143,8 @@ export default function PerfLab() {
   const [runNotify, setRunNotify] = useState(null)
   const [trendData, setTrendData] = useState(null)
   const [trendLoading, setTrendLoading] = useState(false)
+  const [reportTemplateId, setReportTemplateId] = useState('')
+  const [trendTemplateId, setTrendTemplateId] = useState('')
 
   const [form, setForm] = useState({
     name: 'my-load-test',
@@ -192,6 +197,34 @@ export default function PerfLab() {
   const engineLabel = scenarios.data?.engine || engine
   const runnerLabel = scenarios.data?.runner || 'docker'
 
+  const { organizationId, projectId } = useTenant()
+  const scopeLabel = `${organizationId} / ${projectId}`
+  const reportTemplates = useReportTemplates('report')
+  const trendTemplates = useReportTemplates('trend')
+  const activeReportTemplate = reportTemplates.templates.find((t) => t.id === reportTemplateId) || null
+  const activeTrendTemplate = trendTemplates.templates.find((t) => t.id === trendTemplateId) || null
+  // A saved layout that disappears (archived elsewhere, other scope) must not
+  // silently keep applying — drop the selection instead.
+  useEffect(() => {
+    if (reportTemplateId && !reportTemplates.loading && !activeReportTemplate) setReportTemplateId('')
+  }, [reportTemplateId, reportTemplates.loading, activeReportTemplate])
+  useEffect(() => {
+    if (trendTemplateId && !trendTemplates.loading && !activeTrendTemplate) setTrendTemplateId('')
+  }, [trendTemplateId, trendTemplates.loading, activeTrendTemplate])
+
+  const trendWidgets = useMemo(() => {
+    if (activeTrendTemplate?.widgets?.length) return activeTrendTemplate.widgets
+    if (Array.isArray(trendData?.widgets) && trendData.widgets.length) return trendData.widgets
+    return ['kpis', 'latency_band', 'error_bars', 'runs_table']
+  }, [activeTrendTemplate, trendData])
+  const trendShows = (w) => trendWidgets.includes(w)
+  const trendMetrics = useMemo(() => {
+    if (activeTrendTemplate?.metrics?.length) return activeTrendTemplate.metrics
+    if (Array.isArray(trendData?.metrics) && trendData.metrics.length) return trendData.metrics
+    return ['p50_ms', 'p95_ms', 'p99_ms', 'avg_ms', 'error_rate', 'samples']
+  }, [activeTrendTemplate, trendData])
+  const trendShowsMetric = (m) => trendMetrics.includes(m)
+
   const scenarioTrend = useMemo(() => {
     if (!selectedId) return []
     return runRows
@@ -229,15 +262,16 @@ export default function PerfLab() {
     }
     let cancelled = false
     setTrendLoading(true)
-    const sla = form.sla?.p95_ms || 500
-    axios.get(apiUrl(`/api/perf/scenarios/${encodeURIComponent(selectedId)}/trends`), {
-      params: { limit: 25, sla_p95_ms: sla },
-    })
+    // A trend template supplies the window; without one, keep the local defaults.
+    const params = trendTemplateId
+      ? { template: trendTemplateId }
+      : { limit: 25, sla_p95_ms: form.sla?.p95_ms || 500 }
+    axios.get(apiUrl(`/api/perf/scenarios/${encodeURIComponent(selectedId)}/trends`), { params })
       .then(({ data }) => { if (!cancelled) setTrendData(data) })
       .catch(() => { if (!cancelled) setTrendData(null) })
       .finally(() => { if (!cancelled) setTrendLoading(false) })
     return () => { cancelled = true }
-  }, [tab, selectedId, form.sla?.p95_ms, runs.data])
+  }, [tab, selectedId, form.sla?.p95_ms, runs.data, trendTemplateId])
 
   const flash = (tone, title, detail) => {
     setBanner({ tone, title, detail })
@@ -500,12 +534,23 @@ export default function PerfLab() {
     setForm((f) => ({ ...f, schedule: { ...f.schedule, ...patch } }))
   }
 
+  // Exports carry the selected report template so the artifact matches what the
+  // operator sees; the API echoes the layout it actually applied.
+  const templateQuery = (prefix) => (reportTemplateId
+    ? `${prefix}template=${encodeURIComponent(reportTemplateId)}`
+    : '')
+  const templateDetail = activeReportTemplate
+    ? `template "${activeReportTemplate.name}"`
+    : 'full layout (no template)'
+
   const exportRunReport = async (format = 'json') => {
     if (!activeRunId) return
     try {
       if (format === 'json') {
         setBusy(true)
-        const { data } = await axios.get(apiUrl(`/api/perf/runs/${encodeURIComponent(activeRunId)}/report`))
+        const { data } = await axios.get(
+          apiUrl(`/api/perf/runs/${encodeURIComponent(activeRunId)}/report${templateQuery('?')}`),
+        )
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
@@ -515,16 +560,16 @@ export default function PerfLab() {
         link.click()
         link.remove()
         window.URL.revokeObjectURL(url)
-        flash('ok', 'JSON report downloaded', activeRunId)
+        flash('ok', 'JSON report downloaded', `${activeRunId} · ${templateDetail}`)
         setBusy(false)
         return
       }
       const ext = format === 'pdf' ? 'pdf' : format === 'html' ? 'html' : 'csv'
       await downloadExport(
-        `/api/perf/runs/${encodeURIComponent(activeRunId)}/report?format=${encodeURIComponent(format)}`,
+        `/api/perf/runs/${encodeURIComponent(activeRunId)}/report?format=${encodeURIComponent(format)}${templateQuery('&')}`,
         `opl-report-${activeRunId}.${ext}`,
       )
-      flash('ok', `${String(format).toUpperCase()} report downloaded`, activeRunId)
+      flash('ok', `${String(format).toUpperCase()} report downloaded`, `${activeRunId} · ${templateDetail}`)
     } catch (e) {
       flash('error', 'Report export failed', e.response?.data || e.message)
       setBusy(false)
@@ -535,10 +580,10 @@ export default function PerfLab() {
     if (!activeRunId) return
     try {
       await downloadExport(
-        `/api/perf/runs/${encodeURIComponent(activeRunId)}/bench-pack`,
+        `/api/perf/runs/${encodeURIComponent(activeRunId)}/bench-pack${templateQuery('?')}`,
         `opl-bench-${activeRunId}.zip`,
       )
-      flash('ok', 'Bench pack downloaded', 'ZIP with JSON + CSV + HTML + PDF')
+      flash('ok', 'Bench pack downloaded', `ZIP with JSON + CSV + HTML + PDF · ${templateDetail}`)
     } catch (e) {
       flash('error', 'Bench pack failed', e.response?.data || e.message)
     }
@@ -1493,14 +1538,13 @@ export default function PerfLab() {
                 <div className="perf-hint" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <StatusPill tone={runNotify.configured ? (runNotify.mode === 'log' ? 'warn' : 'ok') : 'neutral'}>
                     {runNotify.configured
-                      ? (runNotify.mode === 'log' ? 'Notify log-only' : 'Webhook on')
-                      : 'Webhook off'}
+                      ? (runNotify.mode === 'log' ? 'Notify log-only' : `${runNotify.channels_ready || 0} channel${runNotify.channels_ready === 1 ? '' : 's'} on`)
+                      : 'No channel configured'}
                   </StatusPill>
                   <span>
-                    Terminal-run notifications
-                    {runNotify.configured
-                      ? ` · ${runNotify.mode || 'deliver'}${runNotify.statuses ? ` · ${runNotify.statuses}` : ''}${runNotify.url_host ? ` · ${runNotify.url_host}` : ''}${runNotify.signed ? ' · signed' : ''}`
-                      : ' · set OPL_RUN_WEBHOOK_URL on opl-api'}
+                    Terminal-run notifications · {runNotify.mode || 'deliver'}
+                    {runNotify.statuses ? ` · ${runNotify.statuses}` : ''}
+                    {' — see Notification channels below.'}
                   </span>
                 </div>
               )}
@@ -1767,6 +1811,10 @@ export default function PerfLab() {
             </div>
             <DataTable columns={scnCols} rows={scnRows} rowKey={(r) => r.id} />
           </Panel>
+          <NotifyChannels
+            runNotify={runNotify}
+            onError={(detail) => flash('error', 'Notification test failed', detail)}
+          />
         </>
       )}
 
@@ -1778,7 +1826,23 @@ export default function PerfLab() {
             <KpiTile label="p95 ms" value={fmtNum(liveKPIs.p95)} status={liveKPIs.p95 > (form.sla.p95_ms || 500) ? 'warn' : 'ok'} />
             <KpiTile label="Error rate" value={fmtNum(liveKPIs.err)} status={liveKPIs.err > (form.sla.error_rate_max || 0.05) ? 'error' : 'ok'} />
           </div>
-          <Panel title="Active run">
+          <Panel
+            title="Active run"
+            actions={(
+              <ReportTemplateBar
+                kind="report"
+                label="Report template"
+                templates={reportTemplates.templates}
+                selectedId={reportTemplateId}
+                onSelect={setReportTemplateId}
+                onChanged={(id) => { reportTemplates.reload(); setReportTemplateId(id || '') }}
+                onError={(detail) => flash('error', 'Template save failed', detail)}
+              />
+            )}
+          >
+            <div style={{ padding: '12px 12px 0' }}>
+              <AppliedTemplate template={activeReportTemplate} scopeLabel={scopeLabel} />
+            </div>
             <div style={{ padding: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               <span className="opa-mono" style={{ fontSize: 12 }}>{activeRunId || 'No run selected'}</span>
               <StatusPill tone={runDetail?.status === 'failed' || runDetail?.status === 'error' ? 'error' : runDetail?.status === 'passed' || runDetail?.status === 'completed' ? 'ok' : 'neutral'}>
@@ -1865,6 +1929,13 @@ export default function PerfLab() {
           <Panel title="Runs" flush loading={runs.loading} empty={!runs.loading && !runRows.length} emptyText="Start a run from Run & scale">
             <DataTable columns={runCols} rows={runRows} rowKey={(r) => r.id} />
           </Panel>
+          {activeRunId && (
+            <NotifyChannels
+              runNotify={runNotify}
+              runId={activeRunId}
+              onError={(detail) => flash('error', 'Notification test failed', detail)}
+            />
+          )}
         </>
       )}
 
@@ -1875,73 +1946,119 @@ export default function PerfLab() {
           )}
           {selectedId && (
             <>
-              <div className="opa-grid cols-4">
-                <KpiTile label="Runs in window" value={fmtNum(trendData?.count ?? trendPoints.length)} status="neutral" />
-                <KpiTile
-                  label="Best p95"
-                  value={fmtNum(trendData?.best_p95_ms ?? (trendPoints.length ? Math.min(...trendPoints.map((p) => Number(p.p95_ms) || Infinity)) : 0))}
-                  status="ok"
-                  footer={trendData?.best_run_id ? <span className="perf-hint">{String(trendData.best_run_id).slice(0, 16)}</span> : null}
-                />
-                <KpiTile
-                  label="Worst p95"
-                  value={fmtNum(trendData?.worst_p95_ms ?? (trendPoints.length ? Math.max(...trendPoints.map((p) => Number(p.p95_ms) || 0)) : 0))}
-                  status="warn"
-                  footer={trendData?.worst_run_id ? <span className="perf-hint">{String(trendData.worst_run_id).slice(0, 16)}</span> : null}
-                />
-                <KpiTile
-                  label="SLA breaches"
-                  value={fmtNum(trendData?.sla_breaches ?? trendPoints.filter((p) => Number(p.p95_ms) > (form.sla.p95_ms || 500)).length)}
-                  status={(trendData?.sla_breaches || 0) > 0 ? 'error' : 'ok'}
-                />
-              </div>
-              <div className="perf-trend-grid">
-                <Panel title="Latency band · p50 / p95 / p99" loading={trendLoading}>
-                  <div style={{ padding: 12 }}>
-                    <TrendBandChart points={trendPoints} slaP95={form.sla.p95_ms || 500} />
-                  </div>
-                </Panel>
-                <Panel title="Error rate by run" loading={trendLoading}>
-                  <div style={{ padding: 12 }}>
-                    {trendPoints.length ? <TrendErrorBars points={trendPoints} /> : (
-                      <EmptyState title="No runs" hint="Start runs for this scenario to populate error bars." />
-                    )}
-                  </div>
-                </Panel>
-              </div>
-              <Panel title="Multi-run history" flush>
-                <DataTable
-                  columns={[
-                    {
-                      key: 'id', header: 'Run',
-                      render: (r) => (
-                        <button type="button" className="opa-btn ghost" style={{ padding: '0 4px', fontSize: 11 }} onClick={() => { setActiveRunId(r.id); setTab('results') }}>
-                          {String(r.id).slice(0, 18)}
-                        </button>
-                      ),
-                    },
-                    { key: 'status', header: 'Status', render: (r) => <StatusPill tone={r.status === 'failed' ? 'error' : 'neutral'}>{r.status}</StatusPill> },
-                    { key: 'vus', header: 'VUs', num: true, render: (r) => fmtNum(r.vus) },
-                    { key: 'p50_ms', header: 'p50', num: true, render: (r) => fmtNum(r.p50_ms) },
-                    { key: 'p95_ms', header: 'p95', num: true, render: (r) => fmtNum(r.p95_ms) },
-                    {
-                      key: 'delta_p95_ms', header: 'Δ p95', num: true,
-                      render: (r, i) => {
-                        const prev = trendPoints[trendPoints.indexOf(r) - 1]
-                        if (r.delta_p95_ms != null) return <span className={Number(r.delta_p95_ms) > 0 ? 'perf-delta-bad' : 'perf-delta-good'}>{fmtNum(r.delta_p95_ms)}</span>
-                        if (!prev) return '—'
-                        return <DeltaIndicator current={Number(r.p95_ms)} previous={Number(prev.p95_ms)} invert />
-                      },
-                    },
-                    { key: 'error_rate', header: 'Err', num: true, render: (r) => fmtNum(r.error_rate) },
-                    { key: 'samples', header: 'N', num: true, render: (r) => fmtNum(r.samples) },
-                    { key: 'started_at', header: 'Started', render: (r) => fmtAgo(r.started_at) },
-                  ]}
-                  rows={[...trendPoints].reverse()}
-                  rowKey={(r) => r.id}
-                  maxHeight={320}
-                />
+              <Panel
+                title="Trend layout"
+                actions={(
+                  <ReportTemplateBar
+                    kind="trend"
+                    label="Trend template"
+                    templates={trendTemplates.templates}
+                    selectedId={trendTemplateId}
+                    onSelect={setTrendTemplateId}
+                    onChanged={(id) => { trendTemplates.reload(); setTrendTemplateId(id || '') }}
+                    onError={(detail) => flash('error', 'Template save failed', detail)}
+                  />
+                )}
+              >
+                <div style={{ padding: 12 }}>
+                  <AppliedTemplate
+                    template={activeTrendTemplate}
+                    scopeLabel={scopeLabel}
+                    note={trendData?.template_note}
+                  />
+                </div>
               </Panel>
+              {trendShows('kpis') && (
+                <div className="opa-grid cols-4">
+                  <KpiTile
+                    label="Runs in window"
+                    value={fmtNum(trendData?.count ?? trendPoints.length)}
+                    status="neutral"
+                    footer={trendData?.limit ? <span className="perf-hint">limit {trendData.limit}</span> : null}
+                  />
+                  <KpiTile
+                    label="Best p95"
+                    value={fmtNum(trendData?.best_p95_ms ?? (trendPoints.length ? Math.min(...trendPoints.map((p) => Number(p.p95_ms) || Infinity)) : 0))}
+                    status="ok"
+                    footer={trendData?.best_run_id ? <span className="perf-hint">{String(trendData.best_run_id).slice(0, 16)}</span> : null}
+                  />
+                  <KpiTile
+                    label="Worst p95"
+                    value={fmtNum(trendData?.worst_p95_ms ?? (trendPoints.length ? Math.max(...trendPoints.map((p) => Number(p.p95_ms) || 0)) : 0))}
+                    status="warn"
+                    footer={trendData?.worst_run_id ? <span className="perf-hint">{String(trendData.worst_run_id).slice(0, 16)}</span> : null}
+                  />
+                  <KpiTile
+                    label="SLA breaches"
+                    value={fmtNum(trendData?.sla_breaches ?? trendPoints.filter((p) => Number(p.p95_ms) > (form.sla.p95_ms || 500)).length)}
+                    status={(trendData?.sla_breaches || 0) > 0 ? 'error' : 'ok'}
+                    footer={<span className="perf-hint">p95 &gt; {fmtNum(trendData?.sla_p95_ms ?? (form.sla.p95_ms || 500))} ms</span>}
+                  />
+                </div>
+              )}
+              {(trendShows('latency_band') || trendShows('error_bars')) && (
+                <div className={trendShows('latency_band') && trendShows('error_bars') ? 'perf-trend-grid' : undefined}>
+                  {trendShows('latency_band') && (
+                    <Panel title="Latency band · p50 / p95 / p99" loading={trendLoading}>
+                      <div style={{ padding: 12 }}>
+                        <TrendBandChart points={trendPoints} slaP95={trendData?.sla_p95_ms || form.sla.p95_ms || 500} />
+                      </div>
+                    </Panel>
+                  )}
+                  {trendShows('error_bars') && (
+                    <Panel title="Error rate by run" loading={trendLoading}>
+                      <div style={{ padding: 12 }}>
+                        {trendPoints.length ? <TrendErrorBars points={trendPoints} /> : (
+                          <EmptyState title="No runs" hint="Start runs for this scenario to populate error bars." />
+                        )}
+                      </div>
+                    </Panel>
+                  )}
+                </div>
+              )}
+              {trendShows('runs_table') && (
+                <Panel title="Multi-run history" flush>
+                  <DataTable
+                    columns={[
+                      {
+                        key: 'id', header: 'Run',
+                        render: (r) => (
+                          <button type="button" className="opa-btn ghost" style={{ padding: '0 4px', fontSize: 11 }} onClick={() => { setActiveRunId(r.id); setTab('results') }}>
+                            {String(r.id).slice(0, 18)}
+                          </button>
+                        ),
+                      },
+                      { key: 'status', header: 'Status', render: (r) => <StatusPill tone={r.status === 'failed' ? 'error' : 'neutral'}>{r.status}</StatusPill> },
+                      { key: 'vus', header: 'VUs', num: true, render: (r) => fmtNum(r.vus) },
+                      ...(trendShowsMetric('p50_ms') ? [{ key: 'p50_ms', header: 'p50', num: true, render: (r) => fmtNum(r.p50_ms) }] : []),
+                      ...(trendShowsMetric('p95_ms') ? [{ key: 'p95_ms', header: 'p95', num: true, render: (r) => fmtNum(r.p95_ms) }] : []),
+                      ...(trendShowsMetric('p99_ms') ? [{ key: 'p99_ms', header: 'p99', num: true, render: (r) => fmtNum(r.p99_ms) }] : []),
+                      ...(trendShowsMetric('avg_ms') ? [{ key: 'avg_ms', header: 'avg', num: true, render: (r) => fmtNum(r.avg_ms) }] : []),
+                      {
+                        key: 'delta_p95_ms', header: 'Δ p95', num: true,
+                        render: (r) => {
+                          const prev = trendPoints[trendPoints.indexOf(r) - 1]
+                          if (r.delta_p95_ms != null) return <span className={Number(r.delta_p95_ms) > 0 ? 'perf-delta-bad' : 'perf-delta-good'}>{fmtNum(r.delta_p95_ms)}</span>
+                          if (!prev) return '—'
+                          return <DeltaIndicator current={Number(r.p95_ms)} previous={Number(prev.p95_ms)} invert />
+                        },
+                      },
+                      ...(trendShowsMetric('error_rate') ? [{ key: 'error_rate', header: 'Err', num: true, render: (r) => fmtNum(r.error_rate) }] : []),
+                      ...(trendShowsMetric('samples') ? [{ key: 'samples', header: 'N', num: true, render: (r) => fmtNum(r.samples) }] : []),
+                      { key: 'started_at', header: 'Started', render: (r) => fmtAgo(r.started_at) },
+                    ]}
+                    rows={[...trendPoints].reverse()}
+                    rowKey={(r) => r.id}
+                    maxHeight={320}
+                  />
+                </Panel>
+              )}
+              {trendWidgets.length === 0 && (
+                <EmptyState
+                  title="This template selects no widgets"
+                  hint="Open Manage and tick at least one widget, or switch back to the full layout."
+                />
+              )}
               {trendData?.honesty && <p className="perf-hint">{trendData.honesty}</p>}
             </>
           )}

@@ -2,6 +2,10 @@
 
 ## 0.1.0
 
+- Run & scale / Results: **Notification channels** panel — one card per channel (webhook / chat / email) showing configured state, redacted target and signing, plus the global delivery mode and status filter. An unconfigured channel is shown in a muted, dashed state with the plain reason, never hidden; `log` mode is visually distinct from `deliver`.
+- **Notification history** panel: per-run, per-channel delivery attempts with `sent` / `failed` / `logged` / `skipped` badges (distinguished by shape as well as colour), channel + result filters, and a "Send test notification" action.
+- Results / Trends: **report and trend templates** — picker, applied-layout summary (widgets / metrics / window / scope) and a manage-and-edit modal. Exports (`report` JSON/CSV/HTML/PDF and bench pack) pass `?template=<id>`; the Trends tab renders only the widgets and metric columns the selected template covers.
+- Design prototype: `designs/notify-channels-report-templates/`.
 - Results: PDF + HTML report download and ZIP **bench pack** (JSON/CSV/HTML/PDF).
 - **Trends** tab: latency band (p50/p95/p99), error-rate bars, best/worst/SLA breach KPIs; uses `GET .../scenarios/{id}/trends`.
 - Design prototype: `designs/opl-report-trends/`.
