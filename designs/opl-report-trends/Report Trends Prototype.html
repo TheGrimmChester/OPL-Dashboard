@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OPL — Report pack &amp; Trends</title>
+  <style>
+    :root {
+      --bg-base: #0B0E14;
+      --bg-sunken: #070A0F;
+      --surface-1: #121722;
+      --surface-2: #1A2130;
+      --surface-3: #232B3D;
+      --border-subtle: #222A38;
+      --border-default: #2E3748;
+      --text-primary: #E6EAF2;
+      --text-secondary: #9AA6BC;
+      --text-muted: #66748C;
+      --accent: #7C6CFF;
+      --accent-2: #17C0C0;
+      --ok: #2FD98A;
+      --warn: #F5C451;
+      --error: #FF5C6C;
+      --p50: #2FD98A;
+      --p95: #F5C451;
+      --p99: #FF5C6C;
+      --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+      --radius: 6px;
+      --radius-lg: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font-ui);
+      background:
+        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(124,108,255,0.18), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 90% 0%, rgba(23,192,192,0.12), transparent 50%),
+        var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+    .shell { max-width: 1120px; margin: 0 auto; padding: 28px 20px 64px; }
+    .kicker {
+      font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--text-muted); margin-bottom: 6px;
+    }
+    h1 { font-size: 28px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.02em; }
+    .sub { color: var(--text-secondary); max-width: 58ch; margin: 0 0 24px; line-height: 1.45; font-size: 14px; }
+    .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tab {
+      border: 1px solid var(--border-default); background: var(--surface-1);
+      color: var(--text-secondary); padding: 7px 14px; border-radius: 999px;
+      font-size: 13px; cursor: pointer;
+    }
+    .tab[aria-selected="true"] {
+      background: var(--accent); color: #fff; border-color: transparent;
+    }
+    .panel {
+      background: var(--surface-1); border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg); margin-bottom: 14px; overflow: hidden;
+    }
+    .panel-h {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-subtle);
+      flex-wrap: wrap;
+    }
+    .panel-h h2 { margin: 0; font-size: 14px; font-weight: 600; }
+    .panel-b { padding: 16px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid var(--border-default); background: var(--surface-2);
+      color: var(--text-primary); padding: 6px 12px; border-radius: var(--radius);
+      font-size: 12px; cursor: pointer; font-family: inherit;
+    }
+    .btn:hover { background: var(--surface-3); }
+    .btn.primary { background: var(--accent); border-color: transparent; }
+    .btn.primary:hover { filter: brightness(1.08); }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+    @media (max-width: 720px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+    .kpi {
+      background: var(--bg-sunken); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius); padding: 12px 14px;
+    }
+    .kpi .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .kpi .val { font-size: 22px; font-weight: 600; font-family: var(--font-mono); margin-top: 4px; }
+    .kpi .delta { font-size: 12px; margin-top: 4px; }
+    .delta.up.bad { color: var(--error); }
+    .delta.down.good { color: var(--ok); }
+    .chart-wrap {
+      background: var(--bg-sunken); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius); padding: 12px; position: relative;
+    }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 11px; color: var(--text-secondary); }
+    .legend span::before {
+      content: ""; display: inline-block; width: 10px; height: 3px;
+      margin-right: 6px; vertical-align: middle; border-radius: 2px;
+      background: currentColor;
+    }
+    .leg-p50 { color: var(--p50); }
+    .leg-p95 { color: var(--p95); }
+    .leg-p99 { color: var(--p99); }
+    .leg-sla { color: var(--accent-2); }
+    .bars { display: flex; align-items: flex-end; gap: 6px; height: 96px; padding-top: 8px; }
+    .bar {
+      flex: 1; background: linear-gradient(180deg, rgba(255,92,108,0.85), rgba(255,92,108,0.25));
+      border-radius: 3px 3px 0 0; min-width: 0; position: relative;
+      transition: transform 0.15s ease;
+    }
+    .bar:hover { transform: translateY(-2px); }
+    .bar .tip {
+      display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      background: var(--surface-3); padding: 4px 6px; border-radius: 4px; font-size: 10px;
+      white-space: nowrap; margin-bottom: 4px;
+    }
+    .bar:hover .tip { display: block; }
+    .grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
+    @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); }
+    th { color: var(--text-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+    td.num { font-family: var(--font-mono); text-align: right; }
+    .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px;
+      background: rgba(47,217,138,0.14); color: var(--ok);
+    }
+    .pill.warn { background: rgba(245,196,81,0.14); color: var(--warn); }
+    .pill.err { background: rgba(255,92,108,0.14); color: var(--error); }
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; background: var(--surface-2);
+      border: 1px solid var(--border-default); padding: 12px 16px; border-radius: var(--radius);
+      font-size: 13px; box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+      opacity: 0; transform: translateY(8px); transition: 0.25s ease; pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: none; }
+    .pack-preview {
+      font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary);
+      background: var(--bg-sunken); border: 1px dashed var(--border-default);
+      border-radius: var(--radius); padding: 12px; line-height: 1.6;
+    }
+    .hint { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="shell" data-screen-label="opl-report-trends">
+    <div class="kicker">Open Perf Lab · design prototype</div>
+    <h1>Bench pack &amp; trend report</h1>
+    <p class="sub">
+      Shareable offline artifacts (PDF / ZIP bench pack) and scenario trend widgets
+      beyond sparklines — latency bands, error bars, regression callouts. Matches OPL console tokens.
+    </p>
+
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" aria-selected="true" data-view="results">Results · export</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-view="trends">Trends</button>
+    </div>
+
+    <section id="view-results" data-screen-label="results-export">
+      <div class="kpis">
+        <div class="kpi"><div class="label">Requests</div><div class="val">12 480</div></div>
+        <div class="kpi"><div class="label">p50 ms</div><div class="val">42</div></div>
+        <div class="kpi"><div class="label">p95 ms</div><div class="val">186</div><div class="delta up bad">↑ 8% vs prior</div></div>
+        <div class="kpi"><div class="label">Error rate</div><div class="val">0.4%</div><div class="delta down good">↓ 0.2pp</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h">
+          <h2>Active run · <span style="font-family:var(--font-mono);font-weight:400;color:var(--text-secondary)">run_7f3a…</span></h2>
+          <span class="pill">completed</span>
+        </div>
+        <div class="panel-b">
+          <p class="hint">Download structured reports or a full bench pack (JSON + CSV + HTML + PDF + honesty).</p>
+          <div class="btn-row">
+            <button type="button" class="btn" data-dl="json">Report JSON</button>
+            <button type="button" class="btn" data-dl="csv">Report CSV</button>
+            <button type="button" class="btn" data-dl="html">Report HTML</button>
+            <button type="button" class="btn primary" data-dl="pdf">Download PDF</button>
+            <button type="button" class="btn primary" data-dl="pack">Bench pack (.zip)</button>
+          </div>
+          <div class="pack-preview" style="margin-top:14px" id="pack-tree">
+opl-bench-run_7f3a/<br />
+├── report.json<br />
+├── report.csv<br />
+├── report.html<br />
+├── report.pdf<br />
+└── MANIFEST.txt
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-trends" hidden data-screen-label="trends-widgets">
+      <div class="kpis" id="trend-kpis">
+        <div class="kpi"><div class="label">Runs in window</div><div class="val">12</div></div>
+        <div class="kpi"><div class="label">Best p95</div><div class="val">142</div><div class="delta down good">run_2a…</div></div>
+        <div class="kpi"><div class="label">Worst p95</div><div class="val">410</div><div class="delta up bad">run_9c…</div></div>
+        <div class="kpi"><div class="label">SLA breaches</div><div class="val">2</div><div class="delta up bad">p95 &gt; 300</div></div>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-h"><h2>Latency band · p50 / p95 / p99</h2></div>
+          <div class="panel-b">
+            <div class="chart-wrap">
+              <svg id="band-chart" viewBox="0 0 520 180" width="100%" height="180" aria-label="Latency trend"></svg>
+              <div class="legend">
+                <span class="leg-p50">p50</span>
+                <span class="leg-p95">p95</span>
+                <span class="leg-p99">p99</span>
+                <span class="leg-sla">SLA p95</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Error rate by run</h2></div>
+          <div class="panel-b">
+            <div class="chart-wrap">
+              <div class="bars" id="err-bars"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h">
+          <h2>Multi-run history</h2>
+          <button type="button" class="btn" data-dl="trend-csv">Export trend CSV</button>
+        </div>
+        <div class="panel-b" style="padding:0">
+          <table>
+            <thead>
+              <tr><th>Run</th><th>Status</th><th class="num">VUs</th><th class="num">p95</th><th class="num">Δ p95</th><th class="num">Err</th><th>Started</th></tr>
+            </thead>
+            <tbody id="trend-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script>
+    const RUNS = [
+      { id: "run_a1", status: "completed", vus: 10, p50: 38, p95: 142, p99: 220, err: 0.2, t: "2d ago" },
+      { id: "run_a2", status: "completed", vus: 10, p50: 40, p95: 155, p99: 240, err: 0.3, t: "2d ago" },
+      { id: "run_a3", status: "failed", vus: 20, p50: 55, p95: 410, p99: 680, err: 4.1, t: "1d ago" },
+      { id: "run_a4", status: "completed", vus: 10, p50: 41, p95: 168, p99: 250, err: 0.5, t: "1d ago" },
+      { id: "run_a5", status: "completed", vus: 10, p50: 39, p95: 160, p99: 235, err: 0.4, t: "18h" },
+      { id: "run_a6", status: "completed", vus: 15, p50: 44, p95: 198, p99: 310, err: 0.8, t: "12h" },
+      { id: "run_a7", status: "completed", vus: 10, p50: 42, p95: 186, p99: 280, err: 0.4, t: "3h" },
+      { id: "run_a8", status: "completed", vus: 10, p50: 40, p95: 172, p99: 265, err: 0.3, t: "1h" },
+    ];
+    const SLA = 300;
+
+    function toast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.remove("show"), 2200);
+    }
+
+    document.querySelectorAll(".tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-selected", "false"));
+        btn.setAttribute("aria-selected", "true");
+        const v = btn.dataset.view;
+        document.getElementById("view-results").hidden = v !== "results";
+        document.getElementById("view-trends").hidden = v !== "trends";
+      });
+    });
+
+    document.querySelectorAll("[data-dl]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const kind = btn.dataset.dl;
+        const map = {
+          json: "Downloading opl-report-*.json",
+          csv: "Downloading opl-report-*.csv",
+          html: "Downloading print-ready HTML report",
+          pdf: "Downloading PDF bench cover + steps",
+          pack: "Building ZIP bench pack…",
+          "trend-csv": "Downloading scenario trend CSV",
+        };
+        toast(map[kind] || "Download started");
+      });
+    });
+
+    function drawBand() {
+      const svg = document.getElementById("band-chart");
+      const w = 520, h = 180, pad = { t: 16, r: 12, b: 28, l: 40 };
+      const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+      const vals = RUNS.flatMap((r) => [r.p50, r.p95, r.p99, SLA]);
+      const min = 0, max = Math.max(...vals) * 1.08;
+      const x = (i) => pad.l + (i / (RUNS.length - 1)) * iw;
+      const y = (v) => pad.t + ih - ((v - min) / (max - min)) * ih;
+      const path = (key, color) => {
+        const d = RUNS.map((r, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(r[key]).toFixed(1)}`).join("");
+        return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`;
+      };
+      const slaY = y(SLA);
+      svg.innerHTML = `
+        <line x1="${pad.l}" y1="${slaY}" x2="${w - pad.r}" y2="${slaY}" stroke="#17C0C0" stroke-dasharray="4 4" stroke-width="1"/>
+        ${path("p50", "#2FD98A")}
+        ${path("p95", "#F5C451")}
+        ${path("p99", "#FF5C6C")}
+        ${RUNS.map((r, i) => `<circle cx="${x(i)}" cy="${y(r.p95)}" r="3" fill="#F5C451"/>`).join("")}
+      `;
+    }
+
+    function drawBars() {
+      const host = document.getElementById("err-bars");
+      const max = Math.max(...RUNS.map((r) => r.err), 0.1);
+      host.innerHTML = RUNS.map((r) => {
+        const pct = Math.max(8, (r.err / max) * 100);
+        return `<div class="bar" style="height:${pct}%" title="${r.id}"><span class="tip">${r.err}%</span></div>`;
+      }).join("");
+    }
+
+    function fillTable() {
+      const tb = document.getElementById("trend-rows");
+      tb.innerHTML = RUNS.map((r, i) => {
+        const prev = RUNS[i - 1];
+        const d = prev ? (r.p95 - prev.p95) : 0;
+        const tone = r.status === "failed" ? "err" : r.p95 > SLA ? "warn" : "";
+        const dCls = d > 0 ? "up bad" : d < 0 ? "down good" : "";
+        return `<tr>
+          <td style="font-family:var(--font-mono)">${r.id}</td>
+          <td><span class="pill ${tone}">${r.status}</span></td>
+          <td class="num">${r.vus}</td>
+          <td class="num">${r.p95}</td>
+          <td class="num"><span class="delta ${dCls}">${prev ? (d > 0 ? "+" : "") + d : "—"}</span></td>
+          <td class="num">${r.err}%</td>
+          <td>${r.t}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    drawBand();
+    drawBars();
+    fillTable();
+  </script>
+</body>
+</html>
