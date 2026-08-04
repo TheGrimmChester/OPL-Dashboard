@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import {
-  FiZap, FiPlay, FiPlus, FiTrash2, FiUpload, FiDownload, FiCheck,
+  FiZap, FiPlay, FiTrash2, FiUpload, FiDownload, FiCheck,
   FiActivity, FiDatabase, FiSettings, FiBarChart2, FiGitBranch, FiShield,
-  FiLayers, FiX, FiExternalLink,
+  FiLayers, FiX, FiExternalLink, FiCopy,
 } from 'react-icons/fi'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -14,6 +14,7 @@ import {
 import { useToast } from '../components/ui/Toast'
 import { fmtNum, fmtAgo } from '../theme/format'
 import { loadRunTracesHref, gatePassed } from '../utils/entityLinks'
+import VuTree, { getAtPath, patchStepAt } from '../components/VuTree'
 import './PerfLab.css'
 
 function OpaTracesLink({ runId, children }) {
@@ -39,12 +40,12 @@ const TAB_DEFS = [
 ]
 
 const STRESS_PRESETS = [
-  { id: '', label: 'Custom', hint: 'Use form VUs / duration', vus: null, profile: '', workers: null },
-  { id: 'smoke', label: 'Smoke', hint: '2 VUs · 30s · 1 worker', vus: 2, profile: '', workers: 1, duration: 30 },
-  { id: 'ramp', label: 'Ramp', hint: 'Profile ramp · current VUs', vus: null, profile: 'ramp', workers: null },
-  { id: 'soak', label: 'Soak', hint: 'Steady load · ≥5 VUs', vus: 10, profile: 'soak', workers: 2, duration: 300 },
-  { id: 'spike', label: 'Spike', hint: 'Burst ≥50 VUs', vus: 50, profile: 'spike', workers: 4, duration: 60 },
-  { id: 'stress', label: 'Stress', hint: 'Scale workers + VUs', vus: 40, profile: 'ramp', workers: 4, duration: 120 },
+  { id: '', label: 'Custom', hint: 'Use form VUs / duration', vus: null, profile: '', policy: 'custom', workers: null },
+  { id: 'smoke', label: 'Smoke', hint: '2 VUs · 30s · 1 worker', vus: 2, profile: '', policy: 'custom', workers: 1, duration: 30 },
+  { id: 'smooth', label: 'Smooth', hint: 'Ramp profile · local Docker workers', vus: null, profile: 'ramp', policy: 'smooth', workers: null },
+  { id: 'sustained', label: 'Sustained', hint: 'Soak · 10 VUs · 2 workers', vus: 10, profile: 'soak', policy: 'sustained', workers: 2, duration: 300 },
+  { id: 'stress', label: 'Stress', hint: 'Spike · 50 VUs · 4 workers', vus: 50, profile: 'spike', policy: 'stress', workers: 4, duration: 60 },
+  { id: 'ramp', label: 'Ramp', hint: 'Profile ramp · current VUs', vus: null, profile: 'ramp', policy: 'smooth', workers: null },
 ]
 
 const emptyStep = () => ({
@@ -59,6 +60,7 @@ const emptyStep = () => ({
   selector: '',
   page_url: '',
   ui_action: '',
+  children: [],
 })
 
 function headersToText(headers) {
@@ -106,6 +108,7 @@ export default function PerfLab() {
   const [banner, setBanner] = useState(null)
   const [fanout, setFanout] = useState(false)
   const [profile, setProfile] = useState('')
+  const [policy, setPolicy] = useState('')
   const [engine, setEngine] = useState('jmeter')
   const [workers, setWorkers] = useState(1)
   const [dispatch, setDispatch] = useState(true)
@@ -116,10 +119,15 @@ export default function PerfLab() {
   const [activeRunId, setActiveRunId] = useState(searchParams.get('run') || '')
   const [runDetail, setRunDetail] = useState(null)
   const [samples, setSamples] = useState([])
+  const [stepStats, setStepStats] = useState([])
+  const [runners, setRunners] = useState(null)
   const [gateResult, setGateResult] = useState(null)
   const [captureIncludeStatic, setCaptureIncludeStatic] = useState(false)
   const [captureDryRun, setCaptureDryRun] = useState(true)
   const [capturePreview, setCapturePreview] = useState(null)
+  const [selectedStepPath, setSelectedStepPath] = useState(null)
+  const [treeExpanded, setTreeExpanded] = useState({})
+  const [validateResult, setValidateResult] = useState(null)
 
   const [form, setForm] = useState({
     name: 'my-load-test',
@@ -209,13 +217,17 @@ export default function PerfLab() {
     let cancelled = false
     const tick = async () => {
       try {
-        const [d, s] = await Promise.all([
+        const [d, s, steps, runn] = await Promise.all([
           axios.get(apiUrl(`/api/perf/runs/${encodeURIComponent(activeRunId)}`)),
           axios.get(apiUrl(`/api/perf/runs/${encodeURIComponent(activeRunId)}/samples`)),
+          axios.get(apiUrl(`/api/perf/runs/${encodeURIComponent(activeRunId)}/steps`)).catch(() => ({ data: { steps: [] } })),
+          axios.get(apiUrl(`/api/perf/runs/${encodeURIComponent(activeRunId)}/runners`)).catch(() => ({ data: null })),
         ])
         if (!cancelled) {
           setRunDetail(d.data)
           setSamples(s.data?.samples || [])
+          setStepStats(steps.data?.steps || [])
+          setRunners(runn.data)
         }
       } catch { /* ignore poll errors */ }
     }
@@ -246,37 +258,92 @@ export default function PerfLab() {
     if (next !== searchParams.toString()) setSearchParams(p, { replace: true })
   }, [activeRunId, tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const setStep = (i, patch) => {
-    const steps = form.steps.map((s, idx) => (idx === i ? { ...s, ...patch } : s))
-    setForm({ ...form, steps })
-  }
+  const selectedStep = selectedStepPath ? getAtPath(form.steps, selectedStepPath) : null
 
-  const addStep = (type = 'http') => {
-    const base = type === 'http' ? emptyStep()
-      : type === 'extract' ? { type: 'extract', name: 'Extract', engine: 'regex', expression: '', var: 'token' }
-        : type === 'assert' ? { type: 'assert', name: 'Assert', status: 200, body_contains: '' }
-          : { type: 'transaction', name: 'Business step' }
-    setForm({ ...form, steps: [...form.steps, base] })
-  }
-
-  const moveStep = (i, dir) => {
-    const j = i + dir
-    if (j < 0 || j >= form.steps.length) return
-    const steps = [...form.steps]
-    ;[steps[i], steps[j]] = [steps[j], steps[i]]
-    setForm({ ...form, steps })
+  const patchSelectedStep = (patch) => {
+    if (!selectedStepPath) return
+    setForm({ ...form, steps: patchStepAt(form.steps, selectedStepPath, patch) })
   }
 
   const applyPreset = (id) => {
     setPreset(id)
     const p = STRESS_PRESETS.find((x) => x.id === id)
     if (!p) return
-    if (p.profile != null) setProfile(p.profile)
+    if (p.profile != null) {
+      setProfile(p.profile)
+      setPolicy(p.policy || p.profile)
+    }
     if (p.workers != null) setWorkers(p.workers)
     const patch = {}
     if (p.vus != null) patch.vus = p.vus
     if (p.duration != null) patch.duration_seconds = p.duration
     if (Object.keys(patch).length) setForm((f) => ({ ...f, ...patch }))
+  }
+
+  const archiveScenario = async (id) => {
+    const sid = id || selectedId
+    if (!sid) return
+    if (!window.confirm('Archive this scenario? It will disappear from the list (soft-delete).')) return
+    setBusy(true)
+    try {
+      await axios.delete(apiUrl(`/api/perf/scenarios/${encodeURIComponent(sid)}`))
+      if (selectedId === sid) setSelectedId('')
+      flash('ok', 'Scenario archived', sid)
+      scenarios.reload?.()
+    } catch (e) {
+      flash('error', 'Archive failed', e.response?.data || e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const duplicateScenario = async (id) => {
+    const sid = id || selectedId
+    if (!sid) return
+    setBusy(true)
+    try {
+      const { data } = await axios.post(apiUrl(`/api/perf/scenarios/${encodeURIComponent(sid)}/duplicate`))
+      if (data.id) {
+        setSelectedId(data.id)
+        await loadScenario(data.id)
+      }
+      flash('ok', 'Scenario duplicated', data.name || data.id)
+      scenarios.reload?.()
+    } catch (e) {
+      flash('error', 'Duplicate failed', e.response?.data || e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const exportRunReport = async (format = 'json') => {
+    if (!activeRunId) return
+    try {
+      if (format === 'csv') {
+        await downloadExport(
+          `/api/perf/runs/${encodeURIComponent(activeRunId)}/report?format=csv`,
+          `opl-report-${activeRunId}.csv`,
+        )
+        flash('ok', 'CSV report downloaded', activeRunId)
+      } else {
+        setBusy(true)
+        const { data } = await axios.get(apiUrl(`/api/perf/runs/${encodeURIComponent(activeRunId)}/report`))
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `opl-report-${activeRunId}.json`)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+        flash('ok', 'JSON report downloaded', activeRunId)
+        setBusy(false)
+      }
+    } catch (e) {
+      flash('error', 'Report export failed', e.response?.data || e.message)
+      setBusy(false)
+    }
   }
 
   const saveScenario = async () => {
@@ -432,8 +499,10 @@ export default function PerfLab() {
     setBusy(true)
     try {
       const { data } = await axios.post(apiUrl(`/api/perf/scenarios/${encodeURIComponent(selectedId)}/validate`))
-      flash(data.ok === false ? 'error' : 'ok', 'Validation finished', JSON.stringify(data).slice(0, 400))
-      setTab('results')
+      setValidateResult(data)
+      const ok = data.pass !== false && data.ok !== false
+      flash(ok ? 'ok' : 'error', ok ? 'Validation passed' : 'Validation failed', data.honesty || `${(data.triage || []).length} triage item(s)`)
+      setTab('design')
     } catch (e) {
       flash('error', 'Validate failed', e.response?.data || e.message)
     } finally {
@@ -451,6 +520,7 @@ export default function PerfLab() {
         vus: form.vus,
         fanout,
         profile: profile || undefined,
+        policy: policy || undefined,
         engine,
         dispatch,
         workers: engine === 'jmeter' ? Number(workers) || 1 : undefined,
@@ -476,7 +546,6 @@ export default function PerfLab() {
   }
 
   const downloadExport = async (path, filename) => {
-    if (!selectedId) return
     setBusy(true)
     try {
       const response = await axios.get(apiUrl(path), { responseType: 'blob' })
@@ -496,6 +565,7 @@ export default function PerfLab() {
   }
 
   const downloadJmx = () => {
+    if (!selectedId) return
     downloadExport(
       `/api/perf/scenarios/${encodeURIComponent(selectedId)}/export-jmx`,
       `${selectedId}.jmx`,
@@ -503,6 +573,7 @@ export default function PerfLab() {
   }
 
   const downloadCapture = (kind) => {
+    if (!selectedId) return
     downloadExport(
       `/api/perf/scenarios/${encodeURIComponent(selectedId)}/export-${kind}`,
       `${selectedId}.${kind}`,
@@ -555,13 +626,38 @@ export default function PerfLab() {
     { key: 'duration_seconds', header: 'Dur', num: true },
     { key: 'jmx_bytes', header: 'JMX', num: true, render: (r) => fmtNum(r.jmx_bytes || 0) },
     {
-      key: 'id', header: '',
+      key: 'actions', header: '',
       render: (r) => (
-        <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => startRun(r.id)} aria-label={`Start ${r.name}`}>
-          <FiPlay size={12} /> Start
-        </button>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => startRun(r.id)} aria-label={`Start ${r.name}`}>
+            <FiPlay size={12} />
+          </button>
+          <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => duplicateScenario(r.id)} aria-label={`Duplicate ${r.name}`} title="Duplicate">
+            <FiCopy size={12} />
+          </button>
+          <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => archiveScenario(r.id)} aria-label={`Archive ${r.name}`} title="Archive">
+            <FiTrash2 size={12} />
+          </button>
+        </div>
       ),
     },
+  ]
+
+  const stepCols = [
+    { key: 'step_name', header: 'Step' },
+    { key: 'samples', header: 'N', num: true },
+    { key: 'avg_ms', header: 'Avg', num: true, render: (r) => fmtNum(r.avg_ms) },
+    { key: 'p95_ms', header: 'p95', num: true, render: (r) => fmtNum(r.p95_ms) },
+    { key: 'error_rate', header: 'Err', num: true, render: (r) => fmtNum(r.error_rate) },
+  ]
+
+  const runnerCols = [
+    { key: 'name', header: 'Container', render: (r) => <span className="opa-mono" style={{ fontSize: 11 }}>{r.name}</span> },
+    {
+      key: 'status', header: 'Status',
+      render: (r) => <StatusPill tone={r.running ? 'ok' : r.found ? 'neutral' : 'error'}>{r.status || '—'}</StatusPill>,
+    },
+    { key: 'image', header: 'Image', render: (r) => <span className="opa-muted" style={{ fontSize: 11 }}>{r.image || '—'}</span> },
   ]
 
   const runCols = [
@@ -666,18 +762,7 @@ export default function PerfLab() {
 
       {tab === 'design' && (
         <div className="perf-split">
-          <Panel
-            title="Scenario builder"
-            icon={<FiPlus />}
-            actions={(
-              <>
-                <button type="button" className="opa-btn ghost" onClick={() => addStep('http')}><FiPlus size={12} /> HTTP</button>
-                <button type="button" className="opa-btn ghost" onClick={() => addStep('extract')}>Extract</button>
-                <button type="button" className="opa-btn ghost" onClick={() => addStep('assert')}>Assert</button>
-                <button type="button" className="opa-btn ghost" onClick={() => addStep('transaction')}>Txn</button>
-              </>
-            )}
-          >
+          <Panel title="JMeter visual editor" icon={<FiLayers />}>
             <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div className="perf-field-grid">
                 <div className="perf-field span-2">
@@ -714,132 +799,175 @@ export default function PerfLab() {
               </div>
 
               <p className="perf-hint">
-                Add HTTP steps, extractors, and asserts. Optional CSS/XPath selectors correlate recorded UI actions with requests.
+                Build a nested VU tree (HTTP, transactions, extractors, asserts). Optional CSS/XPath selectors correlate recorded UI actions with requests.
                 Saving generates JMX for Docker execution.
               </p>
 
-              {!form.steps.length ? (
-                <div className="perf-empty-cta">
-                  <div className="title">No steps yet</div>
-                  <div className="perf-hint">Start with an HTTP request, or import traffic from Capture.</div>
-                  <button type="button" className="opa-btn primary" onClick={() => addStep('http')}><FiPlus size={12} /> Add HTTP step</button>
+              {validateResult && (
+                <div
+                  className={`perf-banner ${(validateResult.pass !== false && validateResult.ok !== false) ? 'ok' : 'error'}`}
+                  role="status"
+                >
+                  <div className="perf-banner-body">
+                    <div className="perf-banner-title">
+                      {(validateResult.pass !== false && validateResult.ok !== false) ? 'Validation passed' : 'Validation triage'}
+                    </div>
+                    <div className="perf-banner-detail">
+                      {validateResult.honesty
+                        || (Array.isArray(validateResult.triage) && validateResult.triage.length
+                          ? validateResult.triage.map((t) => (typeof t === 'string' ? t : (t.message || t.detail || JSON.stringify(t)))).join('\n')
+                          : JSON.stringify(validateResult).slice(0, 600))}
+                    </div>
+                  </div>
+                  <button type="button" className="opa-btn ghost" aria-label="Dismiss validation" onClick={() => setValidateResult(null)}><FiX size={14} /></button>
                 </div>
-              ) : (
-                <div className="perf-step-list">
-                  {form.steps.map((step, i) => (
-                    <div className="perf-step" key={`step-${i}`}>
-                      <div className="perf-step-head">
-                        <span className="perf-step-num">{i + 1}</span>
-                        <select className="opa-input" aria-label="Step type" value={step.type || 'http'} onChange={(e) => setStep(i, { type: e.target.value })}>
-                          <option value="http">HTTP request</option>
-                          <option value="extract">Extract variable</option>
-                          <option value="assert">Assert</option>
-                          <option value="transaction">Transaction label</option>
-                        </select>
-                        <input className="opa-input" style={{ flex: 1, minWidth: 120 }} value={step.name || ''} onChange={(e) => setStep(i, { name: e.target.value })} placeholder="Step name" aria-label="Step name" />
-                        <button type="button" className="opa-btn ghost" disabled={i === 0} onClick={() => moveStep(i, -1)} aria-label="Move step up">↑</button>
-                        <button type="button" className="opa-btn ghost" disabled={i === form.steps.length - 1} onClick={() => moveStep(i, 1)} aria-label="Move step down">↓</button>
-                        <button type="button" className="opa-btn ghost" onClick={() => setForm({ ...form, steps: form.steps.filter((_, j) => j !== i) })} aria-label="Remove step"><FiTrash2 size={12} /></button>
+              )}
+
+              <div className="vu-design-layout">
+                <div className="vu-design-tree">
+                  <VuTree
+                    steps={form.steps}
+                    selectedPath={selectedStepPath}
+                    onSelect={setSelectedStepPath}
+                    onChange={(steps) => setForm({ ...form, steps })}
+                    expanded={treeExpanded}
+                    setExpanded={setTreeExpanded}
+                  />
+                </div>
+                <div className="vu-design-inspector">
+                  {!selectedStep ? (
+                    <div className="perf-empty-cta">
+                      <div className="title">Inspector</div>
+                      <div className="perf-hint">Select a node in the VU tree to edit its properties.</div>
+                    </div>
+                  ) : (
+                    <div className="perf-step-body" style={{ padding: 0 }}>
+                      <div className="perf-field-grid wide">
+                        <div className="perf-field">
+                          <label>Type</label>
+                          <select
+                            className="opa-input"
+                            aria-label="Step type"
+                            value={selectedStep.type || 'http'}
+                            onChange={(e) => patchSelectedStep({ type: e.target.value })}
+                          >
+                            <option value="http">HTTP request</option>
+                            <option value="extract">Extract variable</option>
+                            <option value="assert">Assert</option>
+                            <option value="transaction">Transaction label</option>
+                          </select>
+                        </div>
+                        <div className="perf-field span-2">
+                          <label>Name</label>
+                          <input
+                            className="opa-input"
+                            value={selectedStep.name || ''}
+                            onChange={(e) => patchSelectedStep({ name: e.target.value })}
+                            placeholder="Step name"
+                            aria-label="Step name"
+                          />
+                        </div>
                       </div>
-                      <div className="perf-step-body">
-                        {(step.type === 'http' || !step.type) && (
-                          <>
-                            <div className="perf-field-grid wide">
-                              <div className="perf-field">
-                                <label>Method</label>
-                                <select className="opa-input" value={step.method || 'GET'} onChange={(e) => setStep(i, { method: e.target.value })}>
-                                  {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'].map((m) => <option key={m} value={m}>{m}</option>)}
-                                </select>
-                              </div>
-                              <div className="perf-field span-3">
-                                <label>URL</label>
-                                <input className="opa-input" value={step.url || ''} onChange={(e) => setStep(i, { url: e.target.value })} placeholder="https://… or ${token}" />
-                              </div>
-                              <div className="perf-field">
-                                <label>Think time (ms)</label>
-                                <input className="opa-input" type="number" value={step.think_ms || 0} onChange={(e) => setStep(i, { think_ms: Number(e.target.value) })} />
-                              </div>
-                              <div className="perf-field span-3">
-                                <label>Body</label>
-                                <input className="opa-input" value={step.body || ''} onChange={(e) => setStep(i, { body: e.target.value })} placeholder="Optional request body" />
-                              </div>
-                              <div className="perf-field span-3">
-                                <label>Headers (Name: value per line)</label>
-                                <textarea
-                                  className="opa-input opa-mono"
-                                  rows={2}
-                                  value={headersToText(step.headers)}
-                                  onChange={(e) => setStep(i, { headers: textToHeaders(e.target.value) })}
-                                  placeholder={'Authorization: Bearer ${token}\nContent-Type: application/json'}
-                                />
-                              </div>
-                            </div>
-                            <div className="perf-field-grid wide">
-                              <div className="perf-field">
-                                <label>UI selector type</label>
-                                <select className="opa-input" value={step.selector_type || ''} onChange={(e) => setStep(i, { selector_type: e.target.value })}>
-                                  <option value="">—</option>
-                                  <option value="css">CSS</option>
-                                  <option value="xpath">XPath</option>
-                                </select>
-                              </div>
-                              <div className="perf-field span-2">
-                                <label>Selector</label>
-                                <input className="opa-input opa-mono" value={step.selector || ''} onChange={(e) => setStep(i, { selector: e.target.value })} placeholder="#login-btn or //button[@id='save']" />
-                              </div>
-                              <div className="perf-field">
-                                <label>UI action</label>
-                                <select className="opa-input" value={step.ui_action || ''} onChange={(e) => setStep(i, { ui_action: e.target.value })}>
-                                  <option value="">—</option>
-                                  <option value="click">click</option>
-                                  <option value="fill">fill</option>
-                                  <option value="submit">submit</option>
-                                  <option value="navigate">navigate</option>
-                                </select>
-                              </div>
-                              <div className="perf-field span-3">
-                                <label>Page URL (context)</label>
-                                <input className="opa-input" value={step.page_url || ''} onChange={(e) => setStep(i, { page_url: e.target.value })} placeholder="https://app.example.com/login" />
-                              </div>
-                            </div>
-                          </>
-                        )}
-                        {step.type === 'extract' && (
+                      {(selectedStep.type === 'http' || !selectedStep.type) && (
+                        <>
                           <div className="perf-field-grid wide">
                             <div className="perf-field">
-                              <label>Engine</label>
-                              <select className="opa-input" value={step.engine || 'regex'} onChange={(e) => setStep(i, { engine: e.target.value })}>
-                                <option value="regex">Regex</option>
-                                <option value="jsonpath">JSONPath</option>
+                              <label>Method</label>
+                              <select className="opa-input" value={selectedStep.method || 'GET'} onChange={(e) => patchSelectedStep({ method: e.target.value })}>
+                                {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'].map((m) => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                            </div>
+                            <div className="perf-field span-3">
+                              <label>URL</label>
+                              <input className="opa-input" value={selectedStep.url || ''} onChange={(e) => patchSelectedStep({ url: e.target.value })} placeholder="https://… or ${token}" />
+                            </div>
+                            <div className="perf-field">
+                              <label>Think time (ms)</label>
+                              <input className="opa-input" type="number" value={selectedStep.think_ms || 0} onChange={(e) => patchSelectedStep({ think_ms: Number(e.target.value) })} />
+                            </div>
+                            <div className="perf-field span-3">
+                              <label>Body</label>
+                              <input className="opa-input" value={selectedStep.body || ''} onChange={(e) => patchSelectedStep({ body: e.target.value })} placeholder="Optional request body" />
+                            </div>
+                            <div className="perf-field span-3">
+                              <label>Headers (Name: value per line)</label>
+                              <textarea
+                                className="opa-input opa-mono"
+                                rows={2}
+                                value={headersToText(selectedStep.headers)}
+                                onChange={(e) => patchSelectedStep({ headers: textToHeaders(e.target.value) })}
+                                placeholder={'Authorization: Bearer ${token}\nContent-Type: application/json'}
+                              />
+                            </div>
+                          </div>
+                          <div className="perf-field-grid wide">
+                            <div className="perf-field">
+                              <label>UI selector type</label>
+                              <select className="opa-input" value={selectedStep.selector_type || ''} onChange={(e) => patchSelectedStep({ selector_type: e.target.value })}>
+                                <option value="">—</option>
+                                <option value="css">CSS</option>
+                                <option value="xpath">XPath</option>
                               </select>
                             </div>
                             <div className="perf-field span-2">
-                              <label>Expression</label>
-                              <input className="opa-input opa-mono" value={step.expression || ''} onChange={(e) => setStep(i, { expression: e.target.value })} />
+                              <label>Selector</label>
+                              <input className="opa-input opa-mono" value={selectedStep.selector || ''} onChange={(e) => patchSelectedStep({ selector: e.target.value })} placeholder="#login-btn or //button[@id='save']" />
                             </div>
                             <div className="perf-field">
-                              <label>Variable</label>
-                              <input className="opa-input" value={step.var || ''} onChange={(e) => setStep(i, { var: e.target.value })} />
-                            </div>
-                          </div>
-                        )}
-                        {step.type === 'assert' && (
-                          <div className="perf-field-grid wide">
-                            <div className="perf-field">
-                              <label>Status code</label>
-                              <input className="opa-input" type="number" value={step.status || 200} onChange={(e) => setStep(i, { status: Number(e.target.value) })} />
+                              <label>UI action</label>
+                              <select className="opa-input" value={selectedStep.ui_action || ''} onChange={(e) => patchSelectedStep({ ui_action: e.target.value })}>
+                                <option value="">—</option>
+                                <option value="click">click</option>
+                                <option value="fill">fill</option>
+                                <option value="submit">submit</option>
+                                <option value="navigate">navigate</option>
+                              </select>
                             </div>
                             <div className="perf-field span-3">
-                              <label>Body contains</label>
-                              <input className="opa-input" value={step.body_contains || ''} onChange={(e) => setStep(i, { body_contains: e.target.value })} />
+                              <label>Page URL (context)</label>
+                              <input className="opa-input" value={selectedStep.page_url || ''} onChange={(e) => patchSelectedStep({ page_url: e.target.value })} placeholder="https://app.example.com/login" />
                             </div>
                           </div>
-                        )}
-                      </div>
+                        </>
+                      )}
+                      {selectedStep.type === 'extract' && (
+                        <div className="perf-field-grid wide">
+                          <div className="perf-field">
+                            <label>Engine</label>
+                            <select className="opa-input" value={selectedStep.engine || 'regex'} onChange={(e) => patchSelectedStep({ engine: e.target.value })}>
+                              <option value="regex">Regex</option>
+                              <option value="jsonpath">JSONPath</option>
+                            </select>
+                          </div>
+                          <div className="perf-field span-2">
+                            <label>Expression</label>
+                            <input className="opa-input opa-mono" value={selectedStep.expression || ''} onChange={(e) => patchSelectedStep({ expression: e.target.value })} />
+                          </div>
+                          <div className="perf-field">
+                            <label>Variable</label>
+                            <input className="opa-input" value={selectedStep.var || ''} onChange={(e) => patchSelectedStep({ var: e.target.value })} />
+                          </div>
+                        </div>
+                      )}
+                      {selectedStep.type === 'assert' && (
+                        <div className="perf-field-grid wide">
+                          <div className="perf-field">
+                            <label>Status code</label>
+                            <input className="opa-input" type="number" value={selectedStep.status || 200} onChange={(e) => patchSelectedStep({ status: Number(e.target.value) })} />
+                          </div>
+                          <div className="perf-field span-3">
+                            <label>Body contains</label>
+                            <input className="opa-input" value={selectedStep.body_contains || ''} onChange={(e) => patchSelectedStep({ body_contains: e.target.value })} />
+                          </div>
+                        </div>
+                      )}
+                      {selectedStep.type === 'transaction' && (
+                        <p className="perf-hint">Transaction containers group child HTTP requests in the JMX hashTree.</p>
+                      )}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
+              </div>
 
               <div className="perf-step-toolbar">
                 <button type="button" className="opa-btn primary" disabled={busy} onClick={saveScenario}>Save (generates JMX)</button>
@@ -1050,6 +1178,27 @@ export default function PerfLab() {
                   </select>
                 </div>
                 <div className="perf-field">
+                  <label>Load policy</label>
+                  <select
+                    className="opa-input"
+                    value={policy || profile}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setPolicy(v)
+                      if (v === 'smooth') setProfile('ramp')
+                      else if (v === 'sustained') setProfile('soak')
+                      else if (v === 'stress') setProfile('spike')
+                      else setProfile(v === 'custom' ? '' : v)
+                    }}
+                  >
+                    <option value="">default</option>
+                    <option value="smooth">Smooth</option>
+                    <option value="sustained">Sustained</option>
+                    <option value="stress">Stress</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+                <div className="perf-field">
                   <label>Profile</label>
                   <select className="opa-input" value={profile} onChange={(e) => setProfile(e.target.value)}>
                     <option value="">default</option>
@@ -1085,7 +1234,8 @@ export default function PerfLab() {
                 </div>
               </div>
               <p className="perf-hint">
-                Dispatch uses ephemeral JMeter containers on the compose network. Point target_url at an instrumented service (default http://node-app:3000/hello) so Open traces finds tags.load_run_id.
+                Dispatch uses ephemeral JMeter containers on the compose network. Point target_url at an instrumented service (default http://node-app:3000/hello) so Open traces finds tags.load_run_id — example.com never yields traces.
+                Load policies (Smooth / Sustained / Stress) map onto local Docker workers only (≠ multi-cloud geo injectors).
                 Node requires OPA_PERF_ALLOW_NODE_FALLBACK=1.
                 {!hasFederationPeers
                   ? ' Federation fan-out disabled until peers are configured (OPA_FEDERATION_PEERS / opa.federation_peers) — otherwise runs stay local-sample-only.'
@@ -1096,6 +1246,12 @@ export default function PerfLab() {
                   <FiPlay size={12} /> Start run
                 </button>
                 <button type="button" className="opa-btn ghost" disabled={busy || !selectedId} onClick={validateScenario}>Validate</button>
+                <button type="button" className="opa-btn ghost" disabled={busy || !selectedId} onClick={() => duplicateScenario()} title="Duplicate scenario">
+                  <FiCopy size={12} /> Duplicate
+                </button>
+                <button type="button" className="opa-btn ghost" disabled={busy || !selectedId} onClick={() => archiveScenario()} title="Archive scenario">
+                  <FiTrash2 size={12} /> Archive
+                </button>
               </div>
             </div>
           </Panel>
@@ -1125,6 +1281,16 @@ export default function PerfLab() {
                   <FiShield size={12} /> SLA gate
                 </button>
               )}
+              {activeRunId && (
+                <>
+                  <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => exportRunReport('json')}>
+                    <FiDownload size={12} /> Report JSON
+                  </button>
+                  <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => exportRunReport('csv')}>
+                    <FiDownload size={12} /> Report CSV
+                  </button>
+                </>
+              )}
               {activeRunId && runIsActive && (
                 <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => cancelRun(activeRunId)}>
                   Cancel run
@@ -1134,6 +1300,14 @@ export default function PerfLab() {
                 <span className="perf-hint">Start a run or pick one from the table below.</span>
               )}
             </div>
+            {runners?.containers?.length > 0 && (
+              <div style={{ padding: '0 12px 12px' }}>
+                <div className="perf-hint" style={{ marginBottom: 6 }}>
+                  Runners · {runners.running || 0} running · {runners.honesty || 'local Docker inspect'}
+                </div>
+                <DataTable columns={runnerCols} rows={runners.containers} rowKey={(r) => r.name} maxHeight={160} />
+              </div>
+            )}
             {summaryPreview && (summaryPreview.p95_ms != null || summaryPreview.engine || runDetail?.error) && (
               <pre className="opa-mono" style={{ fontSize: 11, margin: '0 12px 12px', whiteSpace: 'pre-wrap' }}>
                 {JSON.stringify({
@@ -1145,11 +1319,17 @@ export default function PerfLab() {
                   error_rate: summaryPreview.error_rate,
                   requests: summaryPreview.requests,
                   workers: summaryPreview.workers,
+                  containers: summaryPreview.containers,
                   error: runDetail?.error || summaryPreview.dispatch_error,
                 }, null, 2)}
               </pre>
             )}
           </Panel>
+          {stepStats.length > 0 && (
+            <Panel title="Per-step stats" flush>
+              <DataTable columns={stepCols} rows={stepStats} rowKey={(r) => r.step_name} maxHeight={280} />
+            </Panel>
+          )}
           {samples.length > 0 && (
             <Panel title="Live samples" flush>
               <DataTable columns={sampleCols} rows={samples.slice(0, 100)} rowKey={(r, i) => r.id || i} maxHeight={280} />
