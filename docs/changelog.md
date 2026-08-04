@@ -2,6 +2,9 @@
 
 ## 0.1.0
 
+- Results: PDF + HTML report download and ZIP **bench pack** (JSON/CSV/HTML/PDF).
+- **Trends** tab: latency band (p50/p95/p99), error-rate bars, best/worst/SLA breach KPIs; uses `GET .../scenarios/{id}/trends`.
+- Design prototype: `designs/opl-report-trends/`.
 - Extract Perf Lab studio from OPA-Dashboard as the primary Open Perf Lab UI (`/` and `/lab`).
 - Shell branded Open Perf Lab; nginx proxies `/api/` to `opl-api:8092`.
 - Optional “Open in OPA” deep-links via `VITE_OPA_HUB_URL` / `VITE_OPA_DASHBOARD_URL`.
