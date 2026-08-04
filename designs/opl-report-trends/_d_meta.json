@@ -1,0 +1,20 @@
+{
+  "name": "opl-report-trends",
+  "description": "OPL PDF/bench pack export and fuller trend report widgets",
+  "designSystems": [],
+  "assets": {
+    "Report Trends": {
+      "versions": [
+        {
+          "path": "Report Trends Prototype.html",
+          "createdAt": "2026-08-04T14:31:07.230Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "type": "design",
+  "primaryDesignSystem": null,
+  "createdAt": "2026-08-04T14:31:07.231Z",
+  "updatedAt": "2026-08-04T14:31:07.231Z"
+}
