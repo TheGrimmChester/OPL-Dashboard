@@ -3,7 +3,7 @@ import axios from 'axios'
 import {
   FiZap, FiPlay, FiTrash2, FiUpload, FiDownload, FiCheck,
   FiActivity, FiDatabase, FiSettings, FiBarChart2, FiGitBranch, FiShield,
-  FiLayers, FiX, FiExternalLink, FiCopy,
+  FiLayers, FiX, FiExternalLink, FiCopy, FiRotateCcw,
 } from 'react-icons/fi'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -11,10 +11,11 @@ import { apiUrl } from '../utils/apiBase'
 import {
   Panel, KpiTile, DataTable, Badge, StatusPill, Tabs, EmptyState,
 } from '../components/ui'
+import Sparkline from '../components/ui/Sparkline'
 import { useToast } from '../components/ui/Toast'
 import { fmtNum, fmtAgo } from '../theme/format'
 import { loadRunTracesHref, gatePassed } from '../utils/entityLinks'
-import VuTree, { getAtPath, patchStepAt } from '../components/VuTree'
+import VuTree, { getAtPath, patchStepAt, insertChildAt } from '../components/VuTree'
 import LoadCurveEditor from '../components/LoadCurveEditor'
 import './PerfLab.css'
 
@@ -97,7 +98,8 @@ function parseJSONField(raw, fallback) {
 export default function PerfLab() {
   const toast = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
-  const scenarios = useApi('/api/perf/scenarios', {}, { noRange: true })
+  const [showArchived, setShowArchived] = useState(false)
+  const scenarios = useApi('/api/perf/scenarios', showArchived ? { archived: '1' } : {}, { noRange: true })
   const runs = useApi('/api/perf/runs', {}, { noRange: true })
   // Baselines / federation peer list remain on OPA Agent — optional; skip until peer APIs move.
   const baselines = useApi('/api/performance/baselines', {}, { noRange: true, skip: true })
@@ -334,6 +336,70 @@ export default function PerfLab() {
     }
   }
 
+  const unarchiveScenario = async (id) => {
+    const sid = id || selectedId
+    if (!sid) return
+    setBusy(true)
+    try {
+      await axios.post(apiUrl(`/api/perf/scenarios/${encodeURIComponent(sid)}/unarchive`))
+      flash('ok', 'Scenario restored', sid)
+      setShowArchived(false)
+      scenarios.reload?.()
+      await loadScenario(sid)
+    } catch (e) {
+      flash('error', 'Restore failed', e.response?.data || e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const applyCorrelationSuggestion = (sug) => {
+    if (!sug) return
+    const extract = {
+      type: 'extract',
+      name: sug.var || 'token',
+      engine: sug.engine || 'regex',
+      expression: sug.expression || '',
+      var: sug.var || 'token',
+    }
+    // Prefer nesting under currently selected HTTP; else append under first HTTP at root.
+    let path = selectedStepPath
+    const node = path ? getAtPath(form.steps, path) : null
+    if (!node || (node.type && node.type !== 'http')) {
+      const idx = (form.steps || []).findIndex((s) => !s.type || s.type === 'http')
+      if (idx < 0) {
+        flash('error', 'Select an HTTP step', 'Correlation extractors nest under HTTP requests.')
+        return
+      }
+      path = [idx]
+    }
+    setForm((f) => ({ ...f, steps: insertChildAt(f.steps, path, extract) }))
+    flash('ok', 'Extractor added', `${extract.engine} ${extract.var}`)
+  }
+
+  const importJtlFile = async (file) => {
+    if (!file) return
+    setBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('jtl', file)
+      if (selectedId) fd.append('scenario_id', selectedId)
+      const q = selectedId ? `?scenario_id=${encodeURIComponent(selectedId)}` : ''
+      const { data } = await axios.post(apiUrl(`/api/perf/runs/import-jtl${q}`), fd)
+      if (data.id || data.load_run_id) {
+        const rid = data.id || data.load_run_id
+        setActiveRunId(rid)
+        setTab('results')
+      }
+      flash('ok', 'JTL imported', data.honesty || `${data.sample_count || 0} samples`)
+      runs.reload?.()
+    } catch (e) {
+      flash('error', 'JTL import failed', e.response?.data || e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const duplicateScenario = async (id) => {
     const sid = id || selectedId
     if (!sid) return
@@ -520,16 +586,21 @@ export default function PerfLab() {
       try {
         body = JSON.parse(text)
       } catch {
-        throw new Error('File must be JSON (HAR or XHR array)')
+        throw new Error('File must be JSON (HAR, XHR array, or Postman collection)')
       }
       const q = new URLSearchParams()
       q.set('name', file.name.replace(/\.(har|json)$/i, ''))
       if (captureDryRun) q.set('dry_run', '1')
       if (captureIncludeStatic) q.set('include_static', '1')
       if (selectedId && !captureDryRun) q.set('id', selectedId)
-      const payload = kind === 'har'
-        ? (body.log ? body : { har: body })
-        : (Array.isArray(body) ? { xhr: body } : body)
+      let payload
+      if (kind === 'har') {
+        payload = body.log ? body : { har: body }
+      } else if (kind === 'xhr') {
+        payload = Array.isArray(body) ? { xhr: body } : body
+      } else {
+        payload = body.info ? body : { postman: body }
+      }
       const { data } = await axios.post(
         apiUrl(`/api/perf/scenarios/import-${kind}?${q}`),
         payload,
@@ -702,15 +773,25 @@ export default function PerfLab() {
       key: 'actions', header: '',
       render: (r) => (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => startRun(r.id)} aria-label={`Start ${r.name}`}>
-            <FiPlay size={12} />
-          </button>
-          <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => duplicateScenario(r.id)} aria-label={`Duplicate ${r.name}`} title="Duplicate">
-            <FiCopy size={12} />
-          </button>
-          <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => archiveScenario(r.id)} aria-label={`Archive ${r.name}`} title="Archive">
-            <FiTrash2 size={12} />
-          </button>
+          {!showArchived && (
+            <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => startRun(r.id)} aria-label={`Start ${r.name}`}>
+              <FiPlay size={12} />
+            </button>
+          )}
+          {!showArchived && (
+            <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => duplicateScenario(r.id)} aria-label={`Duplicate ${r.name}`} title="Duplicate">
+              <FiCopy size={12} />
+            </button>
+          )}
+          {showArchived ? (
+            <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => unarchiveScenario(r.id)} aria-label={`Restore ${r.name}`} title="Restore">
+              <FiRotateCcw size={12} />
+            </button>
+          ) : (
+            <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => archiveScenario(r.id)} aria-label={`Archive ${r.name}`} title="Archive">
+              <FiTrash2 size={12} />
+            </button>
+          )}
         </div>
       ),
     },
@@ -882,16 +963,44 @@ export default function PerfLab() {
                   className={`perf-banner ${(validateResult.pass !== false && validateResult.ok !== false) ? 'ok' : 'error'}`}
                   role="status"
                 >
-                  <div className="perf-banner-body">
+                  <div className="perf-banner-body" style={{ width: '100%' }}>
                     <div className="perf-banner-title">
                       {(validateResult.pass !== false && validateResult.ok !== false) ? 'Validation passed' : 'Validation triage'}
                     </div>
                     <div className="perf-banner-detail">
-                      {validateResult.honesty
-                        || (Array.isArray(validateResult.triage) && validateResult.triage.length
-                          ? validateResult.triage.map((t) => (typeof t === 'string' ? t : (t.message || t.detail || JSON.stringify(t)))).join('\n')
-                          : JSON.stringify(validateResult).slice(0, 600))}
+                      {validateResult.honesty || ''}
                     </div>
+                    {Array.isArray(validateResult.triage) && validateResult.triage.length > 0 && (
+                      <div className="perf-triage-list" style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {validateResult.triage.map((t, i) => (
+                          <div key={i} className="perf-triage-card" style={{ borderLeft: '3px solid var(--danger, #c44)', paddingLeft: 8, fontSize: 12 }}>
+                            <div><strong>#{t.index}</strong> {t.type} {t.name || ''} · {t.severity}</div>
+                            <div className="perf-hint">{t.hint || t.error}</div>
+                            {t.body_preview && (
+                              <pre className="opa-mono" style={{ margin: '4px 0 0', maxHeight: 72, overflow: 'auto', fontSize: 11 }}>{String(t.body_preview).slice(0, 400)}</pre>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {Array.isArray(validateResult.correlation_suggestions) && validateResult.correlation_suggestions.length > 0 && (
+                      <div style={{ marginTop: 10 }}>
+                        <div className="perf-banner-title" style={{ fontSize: 12 }}>Auto-correlation suggestions</div>
+                        <div className="perf-hint">Dynamic tokens detected — add extractors before load to avoid replay failures.</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+                          {validateResult.correlation_suggestions.map((s, i) => (
+                            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                              <code className="opa-mono">{s.var}</code>
+                              <span className="perf-hint">{s.engine}: {s.expression}</span>
+                              <span className="perf-hint">({s.reason})</span>
+                              <button type="button" className="opa-btn ghost" style={{ padding: '0 6px' }} onClick={() => applyCorrelationSuggestion(s)}>
+                                Apply extract
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <button type="button" className="opa-btn ghost" aria-label="Dismiss validation" onClick={() => setValidateResult(null)}><FiX size={14} /></button>
                 </div>
@@ -932,6 +1041,9 @@ export default function PerfLab() {
                             <option value="if">If controller</option>
                             <option value="while">While controller</option>
                             <option value="loop">Loop controller</option>
+                            <option value="foreach">ForEach controller</option>
+                            <option value="fragment">Fragment (reusable)</option>
+                            <option value="include">Link / include fragment</option>
                           </select>
                         </div>
                         <div className="perf-field span-2">
@@ -1095,6 +1207,43 @@ export default function PerfLab() {
                           <p className="perf-hint span-3">Emits LoopController wrapping child samplers.</p>
                         </div>
                       )}
+                      {(selectedStep.type === 'foreach' || selectedStep.type === 'foreach_controller' || selectedStep.type === 'for_each') && (
+                        <div className="perf-field-grid wide">
+                          <div className="perf-field">
+                            <label>Input variable</label>
+                            <input
+                              className="opa-input opa-mono"
+                              value={selectedStep.input_var || ''}
+                              onChange={(e) => patchSelectedStep({ input_var: e.target.value })}
+                              placeholder="items"
+                            />
+                          </div>
+                          <div className="perf-field">
+                            <label>Return variable</label>
+                            <input
+                              className="opa-input opa-mono"
+                              value={selectedStep.return_var || ''}
+                              onChange={(e) => patchSelectedStep({ return_var: e.target.value })}
+                              placeholder="item"
+                            />
+                          </div>
+                          <p className="perf-hint span-3">ForEachController iterates input_1…N into the return var (JMeter style).</p>
+                        </div>
+                      )}
+                      {selectedStep.type === 'fragment' && (
+                        <p className="perf-hint">Named reusable journey piece. Emitted disabled in JMX; Link/include expands children at emit time.</p>
+                      )}
+                      {(selectedStep.type === 'include' || selectedStep.type === 'link') && (
+                        <div className="perf-field">
+                          <label>Fragment ref (name)</label>
+                          <input
+                            className="opa-input"
+                            value={selectedStep.ref || selectedStep.fragment || ''}
+                            onChange={(e) => patchSelectedStep({ ref: e.target.value })}
+                            placeholder="SharedFragment"
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1186,7 +1335,7 @@ export default function PerfLab() {
         <Panel title="Capture → steps">
           <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <p className="perf-hint">
-              Import a browser HAR or an XHR/fetch JSON log. Entries become HTTP steps with optional UI selector metadata.
+              Import a browser HAR, XHR/fetch JSON, or a Postman Collection (v2/v2.1). Entries become HTTP steps.
               Prefer dry-run preview before persisting.
             </p>
             <div className="perf-field-grid">
@@ -1213,6 +1362,10 @@ export default function PerfLab() {
               <label className="opa-btn ghost">
                 <FiUpload size={12} /> Import XHR JSON
                 <input type="file" accept=".json,application/json" hidden onChange={(e) => importCaptureFile('xhr', e.target.files?.[0])} />
+              </label>
+              <label className="opa-btn ghost">
+                <FiUpload size={12} /> Import Postman
+                <input type="file" accept=".json,application/json" hidden onChange={(e) => importCaptureFile('postman', e.target.files?.[0])} />
               </label>
               <button type="button" className="opa-btn ghost" disabled={!selectedId} onClick={() => downloadCapture('har')}><FiDownload size={12} /> Export HAR</button>
               <button type="button" className="opa-btn ghost" disabled={!selectedId} onClick={() => downloadCapture('xhr')}><FiDownload size={12} /> Export XHR</button>
@@ -1477,6 +1630,16 @@ export default function PerfLab() {
                   <div className="perf-hint" style={{ marginBottom: 6 }}>
                     Multi-run history for this scenario (≤25) — p95 / errors over recent runs
                   </div>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="perf-hint">p95</span>
+                      <Sparkline data={[...scenarioTrend].reverse().map((r) => r.p95_ms)} width={120} height={28} color="var(--accent, #3b82f6)" />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="perf-hint">errors</span>
+                      <Sparkline data={[...scenarioTrend].reverse().map((r) => r.error_rate)} width={120} height={28} color="var(--danger, #c44)" />
+                    </div>
+                  </div>
                   <DataTable
                     columns={[
                       {
@@ -1502,7 +1665,13 @@ export default function PerfLab() {
               )}
             </div>
           </Panel>
-          <Panel title="Scenarios" flush loading={scenarios.loading} empty={!scenarios.loading && !scnRows.length} emptyText="Build a scenario in Design">
+          <Panel title={showArchived ? 'Archived scenarios' : 'Scenarios'} flush loading={scenarios.loading} empty={!scenarios.loading && !scnRows.length} emptyText={showArchived ? 'No archived scenarios' : 'Build a scenario in Design'}>
+            <div style={{ padding: '8px 12px', display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
+                <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+                Show archived
+              </label>
+            </div>
             <DataTable columns={scnCols} rows={scnRows} rowKey={(r) => r.id} />
           </Panel>
         </>
@@ -1538,13 +1707,17 @@ export default function PerfLab() {
                   </button>
                 </>
               )}
+              <label className="opa-btn ghost">
+                <FiUpload size={12} /> Import JTL
+                <input type="file" accept=".jtl,.csv,text/csv,text/xml,application/xml" hidden onChange={(e) => importJtlFile(e.target.files?.[0])} />
+              </label>
               {activeRunId && runIsActive && (
                 <button type="button" className="opa-btn ghost" disabled={busy} onClick={() => cancelRun(activeRunId)}>
                   Cancel run
                 </button>
               )}
               {!activeRunId && (
-                <span className="perf-hint">Start a run or pick one from the table below.</span>
+                <span className="perf-hint">Start a run, import a JTL, or pick a run from the table below.</span>
               )}
             </div>
             {runners?.containers?.length > 0 && (
