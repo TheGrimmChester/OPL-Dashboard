@@ -642,3 +642,203 @@
 .perf-delta-bad { color: var(--error); }
 .perf-delta-good { color: var(--ok); }
 
+
+/* --- Notification channels --------------------------------------------- */
+/* Configured/unconfigured is carried by shape as well as colour so the state
+   survives grayscale: solid card + filled dot = sending; dashed amber rail +
+   hollow ring = configured but log-only; fully dashed + dash glyph = nothing
+   configured, nothing sent. Unconfigured never borrows ok green or error red. */
+.perf-notify-head { display: inline-flex; align-items: center; gap: 8px; }
+.perf-notify-mode {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 8px; border-radius: 999px;
+  font-size: var(--fs-11); font-weight: var(--fw-medium);
+  color: var(--accent); background: var(--accent-subtle);
+  border: 1px solid transparent;
+}
+.perf-notify-mode.log {
+  color: var(--warn); background: var(--warn-dim);
+  border: 1px dashed var(--warn);
+}
+.perf-notify-mode .perf-notify-result-mark { background: currentColor; }
+.perf-notify-mode.log .perf-notify-result-mark { background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+.perf-notify-statuses { font-size: var(--fs-11); color: var(--text-muted); }
+.perf-notify-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.perf-notify-banner {
+  font-size: var(--fs-12); line-height: 1.5;
+  padding: 8px 10px; border-radius: var(--radius);
+}
+.perf-notify-banner.log {
+  color: var(--warn); background: var(--warn-dim);
+  border: 1px dashed var(--warn);
+}
+.perf-notify-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 860px) { .perf-notify-strip { grid-template-columns: 1fr; } }
+.perf-notify-card {
+  text-align: left; cursor: pointer; font-family: var(--font-ui);
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 8px 10px 8px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--neutral);
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.perf-notify-card:hover { border-color: var(--border-strong); }
+.perf-notify-card.active { box-shadow: inset 0 0 0 1px var(--accent); }
+.perf-notify-card.on { border-left-color: var(--ok); }
+.perf-notify-card.log { border-left: 3px dashed var(--warn); }
+.perf-notify-card.off {
+  background: none;
+  border: 1px dashed var(--border-default);
+  border-left: 3px dashed var(--border-default);
+  color: var(--text-muted);
+}
+.perf-notify-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.perf-notify-card-name { font-size: var(--fs-13); font-weight: var(--fw-medium); }
+.perf-notify-card-payload { margin-left: auto; font-size: var(--fs-11); color: var(--text-muted); }
+.perf-notify-card-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 7px; border-radius: 999px;
+  font-size: var(--fs-11); color: var(--text-secondary); background: var(--surface-3);
+}
+.perf-notify-card.on .perf-notify-card-badge { color: var(--ok); background: var(--ok-dim); }
+.perf-notify-card.log .perf-notify-card-badge { color: var(--warn); background: var(--warn-dim); }
+.perf-notify-card.off .perf-notify-card-badge {
+  color: var(--text-muted); background: none; border: 1px dashed var(--border-default);
+}
+.perf-notify-card.on .perf-notify-card-badge .perf-notify-result-mark { background: var(--ok); }
+.perf-notify-card.log .perf-notify-card-badge .perf-notify-result-mark {
+  background: none; box-shadow: inset 0 0 0 1.5px var(--warn);
+}
+.perf-notify-card.off .perf-notify-card-badge .perf-notify-result-mark {
+  width: 7px; height: 1.5px; border-radius: 0; background: var(--text-muted);
+}
+.perf-notify-card-state { font-size: var(--fs-12); color: var(--text-secondary); }
+.perf-notify-card.off .perf-notify-card-state { color: var(--text-muted); }
+.perf-notify-card-target { font-size: var(--fs-11); color: var(--text-muted); word-break: break-all; }
+
+.perf-notify-filters {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 12px; border-bottom: 1px solid var(--border-subtle);
+}
+.perf-notify-filter-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.perf-notify-filter-label {
+  font-size: var(--fs-11); text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-muted); min-width: 62px;
+}
+.perf-notify-chip {
+  cursor: pointer; font-family: var(--font-ui);
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 9px; border-radius: 999px;
+  border: 1px solid var(--border-default); background: none;
+  color: var(--text-secondary); font-size: var(--fs-11);
+}
+.perf-notify-chip:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.perf-notify-chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-subtle); }
+.perf-notify-chip-count { color: var(--text-muted); }
+.perf-notify-chip.active .perf-notify-chip-count { color: inherit; }
+
+.perf-notify-result {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 8px; border-radius: 999px;
+  font-size: var(--fs-11); font-weight: var(--fw-medium);
+  color: var(--text-secondary); background: var(--surface-2);
+}
+.perf-notify-result-mark { width: 6px; height: 6px; border-radius: 999px; background: currentColor; flex: none; }
+.perf-notify-result.ok { color: var(--ok); background: var(--ok-dim); }
+.perf-notify-result.error { color: var(--error); background: var(--error-dim); }
+/* logged: hollow ring — recorded on purpose, nothing left the deployment. */
+.perf-notify-result.info { color: var(--info, var(--accent)); background: var(--info-dim, var(--accent-subtle)); }
+.perf-notify-result.info .perf-notify-result-mark { background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+/* skipped: dash glyph — nothing was attempted, and the reason is in Detail. */
+.perf-notify-result.skipped {
+  color: var(--text-muted); background: none; border: 1px dashed var(--border-default);
+}
+.perf-notify-result.skipped .perf-notify-result-mark { width: 7px; height: 1.5px; border-radius: 0; }
+.perf-notify-run { font-size: var(--fs-11); color: var(--accent); }
+.perf-notify-target { font-size: var(--fs-11); color: var(--text-muted); word-break: break-all; }
+.perf-notify-detail { font-size: var(--fs-11); color: var(--text-secondary); }
+
+/* --- Report / trend templates ----------------------------------------- */
+.perf-tpl-bar { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.perf-tpl-bar-label {
+  font-size: var(--fs-11); text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted);
+}
+.perf-tpl-select { font-size: var(--fs-12); padding: 3px 8px; max-width: 220px; }
+.perf-tpl-applied {
+  margin: 0 0 12px; padding: 10px 12px;
+  background: var(--bg-sunken); border: 1px solid var(--border-subtle); border-radius: var(--radius);
+}
+.perf-tpl-applied-row { display: flex; align-items: baseline; gap: 10px; font-size: var(--fs-12); padding: 1px 0; }
+.perf-tpl-applied-row > span:first-child {
+  min-width: 74px; font-size: var(--fs-11); text-transform: uppercase;
+  letter-spacing: .04em; color: var(--text-muted);
+}
+.perf-tpl-applied-row code { font-family: var(--font-mono); color: var(--text-secondary); }
+.perf-tpl-kind {
+  font-style: normal; font-size: var(--fs-11);
+  padding: 0 7px; border-radius: 999px;
+  color: var(--accent); background: var(--accent-subtle);
+}
+.perf-tpl-chiprow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.perf-tpl-chip {
+  cursor: pointer; font-family: var(--font-ui);
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default); background: none;
+  color: var(--text-secondary); font-size: var(--fs-12);
+}
+.perf-tpl-chip.round { border-radius: 999px; }
+.perf-tpl-chip:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.perf-tpl-chip.on { border-color: var(--accent); color: var(--text-primary); background: var(--accent-subtle); }
+.perf-tpl-chip-box {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; border-radius: 3px;
+  border: 1px solid var(--border-strong); color: var(--accent); flex: none;
+}
+.perf-tpl-chip.on .perf-tpl-chip-box { border-color: var(--accent); }
+.perf-tpl-scrim {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(7, 10, 15, 0.66);
+  display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px;
+  overflow-y: auto;
+}
+.perf-tpl-modal {
+  width: min(860px, 100%);
+  background: var(--surface-1); border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg); overflow: hidden;
+}
+.perf-tpl-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-bottom: 1px solid var(--border-subtle);
+}
+.perf-tpl-modal-head h3 { margin: 0; font-size: var(--fs-13); }
+.perf-tpl-modal-body { display: grid; grid-template-columns: 200px 1fr; }
+@media (max-width: 720px) { .perf-tpl-modal-body { grid-template-columns: 1fr; } }
+.perf-tpl-list {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px; border-right: 1px solid var(--border-subtle); background: var(--bg-sunken);
+}
+.perf-tpl-list-label {
+  font-size: var(--fs-11); text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted);
+}
+.perf-tpl-list-item {
+  cursor: pointer; text-align: left; font-family: var(--font-ui);
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px; border-radius: var(--radius-sm);
+  border: 1px solid transparent; background: none; color: var(--text-secondary); font-size: var(--fs-12);
+}
+.perf-tpl-list-item:hover { background: var(--surface-2); color: var(--text-primary); }
+.perf-tpl-list-item.active { border-color: var(--accent); color: var(--text-primary); background: var(--accent-subtle); }
+.perf-tpl-list-item strong { font-weight: var(--fw-medium); }
+.perf-tpl-list-item > span { margin-left: auto; font-size: var(--fs-11); color: var(--text-muted); }
+.perf-tpl-list-item.new { color: var(--accent); }
+.perf-tpl-form { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.perf-tpl-field { display: flex; flex-direction: column; gap: 5px; }
+.perf-tpl-field > span:first-child {
+  font-size: var(--fs-11); text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted);
+}
+.perf-tpl-num { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-12); color: var(--text-secondary); }
+.perf-tpl-num .opa-input { width: 86px; padding: 3px 8px; font-size: var(--fs-12); }
+.perf-tpl-actions { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
