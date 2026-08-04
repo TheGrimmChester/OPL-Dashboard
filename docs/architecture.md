@@ -12,4 +12,8 @@ Browser → (optional) OPA hub/dashboard URL for deep-links only
 
 Primary surface: Perf Lab studio at `/` and `/lab`.
 
+Notification channels and delivery history are read-only views over `GET /api/health` (`run_notify.channels[]`) and `GET /api/perf/notifications`. The dashboard never holds a webhook URL, chat URL, SMTP credential or recipient list — those stay in the stack `.env` on `opl-api`, which returns hosts and counts only.
+
+Report and trend templates are stored server-side (`/api/perf/report-templates`) and scoped by the `X-Organization-ID` / `X-Project-ID` headers the tenant context already attaches. The picker's selection is passed to exports as `?template=<id>` so a downloaded artifact matches the on-screen layout.
+
 Shared modules: `@open-family/ui` (shell helpers/tokens) and `@open-family/client` (typed HTTP helpers), linked as local `file:` packages during development.
