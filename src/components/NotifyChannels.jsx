@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
-import { FiSend } from 'react-icons/fi'
+import { FiRefreshCw, FiSend } from 'react-icons/fi'
+import {
+  Banner, Button, Card, Code, EmptyState, Stack, Table, TableCaption,
+} from '@open-family/ui'
 import { apiUrl } from '../utils/apiBase'
-import { Panel, DataTable, EmptyState } from './ui'
-import { fmtAgo } from '../theme/format'
+import { fmtAgo, fmtNum } from '../theme/format'
+import { tableState } from './tableState'
 
 // Terminal-run notification channels + delivery history.
 //
@@ -12,6 +15,12 @@ import { fmtAgo } from '../theme/format'
 //    in a muted state — never hidden, never dressed as success or as an error;
 //  - `log` mode is visibly distinct from `deliver` (nothing leaves the box);
 //  - every attempt is listed, including `skipped` ones.
+//
+// State is carried by shape as well as colour, so the meaning survives grayscale:
+// filled dot = left the box, ring = intentional no-send, dash = nothing attempted.
+// That is also why these badges are local rather than the kit's `Badge` — the kit
+// gives four status tones, and "configured but deliberately not sending" is not one
+// of them.
 
 const CHANNEL_LABELS = {
   webhook: 'Webhook',
@@ -36,14 +45,11 @@ function channelLabel(name) {
   return CHANNEL_LABELS[name] || name
 }
 
-// ResultBadge distinguishes results by shape as well as colour so the meaning
-// survives grayscale: filled dot = left the box, ring = intentional no-send,
-// dash = nothing was attempted.
 function ResultBadge({ result }) {
   const tone = RESULT_TONES[result] || 'neutral'
   return (
-    <span className={`perf-notify-result ${tone}`}>
-      <span className="perf-notify-result-mark" aria-hidden="true" />
+    <span className={`opl-notify-result is-${tone}`}>
+      <span className="opl-notify-mark" aria-hidden="true" />
       {result || '—'}
     </span>
   )
@@ -60,11 +66,11 @@ function ChannelCard({ channel, active, onToggle }) {
       : logOnly
         ? 'configured, not sending — mode is log'
         : 'configured and sending'
-  const badge = !enabled ? 'disabled' : !configured ? '— not configured' : logOnly ? 'configured · log' : 'configured'
+  const badge = !enabled ? 'disabled' : !configured ? 'not configured' : logOnly ? 'configured · log' : 'configured'
   const cls = [
-    'perf-notify-card',
-    configured && enabled ? (logOnly ? 'log' : 'on') : 'off',
-    active ? 'active' : '',
+    'opl-notify-card',
+    configured && enabled ? (logOnly ? 'is-log' : 'is-on') : 'is-off',
+    active ? 'is-active' : '',
   ].filter(Boolean).join(' ')
   return (
     <button
@@ -74,17 +80,17 @@ function ChannelCard({ channel, active, onToggle }) {
       onClick={() => onToggle(channel.name)}
       title={channel.target ? `Target: ${channel.target}` : state}
     >
-      <span className="perf-notify-card-head">
-        <span className="perf-notify-card-name">{channelLabel(channel.name)}</span>
-        <span className="perf-notify-card-badge">
-          <span className="perf-notify-result-mark" aria-hidden="true" />
+      <span className="opl-notify-card-head">
+        <span className="opl-notify-card-name">{channelLabel(channel.name)}</span>
+        <span className="opl-notify-card-badge">
+          <span className="opl-notify-mark" aria-hidden="true" />
           {badge}
         </span>
-        <span className="perf-notify-card-payload">{CHANNEL_PAYLOADS[channel.name] || ''}</span>
+        <span className="oui-text-sm oui-text-muted">{CHANNEL_PAYLOADS[channel.name] || ''}</span>
       </span>
-      <span className="perf-notify-card-state">{state}</span>
+      <span className="oui-text-sm oui-text-secondary">{state}</span>
       {(channel.target || channel.signed) && (
-        <span className="perf-notify-card-target opa-mono">
+        <span className="oui-text-sm oui-text-muted oui-mono opl-notify-target">
           {channel.target || ''}
           {channel.signed ? ' · signed' : ''}
         </span>
@@ -96,6 +102,7 @@ function ChannelCard({ channel, active, onToggle }) {
 export default function NotifyChannels({ runNotify, runId, onError }) {
   const [history, setHistory] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
   const [channelFilter, setChannelFilter] = useState('')
   const [resultFilter, setResultFilter] = useState('')
   const [testing, setTesting] = useState(false)
@@ -112,11 +119,18 @@ export default function NotifyChannels({ runNotify, runId, onError }) {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setError(null)
     const params = { limit: 100 }
     if (runId) params.run_id = runId
     axios.get(apiUrl('/api/perf/notifications'), { params })
       .then(({ data }) => { if (!cancelled) setHistory(data) })
-      .catch(() => { if (!cancelled) setHistory(null) })
+      .catch((e) => {
+        if (cancelled) return
+        setHistory(null)
+        // Previously swallowed, so a failed history request rendered as
+        // "no delivery attempts recorded yet" — the opposite of the truth.
+        setError(e.response?.data?.error || e.message || 'Request failed')
+      })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [runId, reloadKey])
@@ -150,64 +164,62 @@ export default function NotifyChannels({ runNotify, runId, onError }) {
     }
   }
 
-  const cols = [
-    { key: 'created_at', header: 'Time', render: (r) => fmtAgo(r.created_at) },
-    {
-      key: 'run_id',
-      header: 'Run',
-      render: (r) => <span className="opa-mono perf-notify-run">{String(r.run_id || '—').slice(0, 18)}</span>,
-    },
-    { key: 'result', header: 'Status', render: (r) => <ResultBadge result={r.result} /> },
+  const columns = [
+    { key: 'created_at', header: 'When', render: (r) => fmtAgo(r.created_at) },
+    { key: 'run_id', header: 'Run', mono: true, render: (r) => String(r.run_id || '—').slice(0, 18) },
+    { key: 'result', header: 'Result', render: (r) => <ResultBadge result={r.result} /> },
     { key: 'channel', header: 'Channel', render: (r) => channelLabel(r.channel) },
     { key: 'run_status', header: 'Run status' },
-    {
-      key: 'target',
-      header: 'Target',
-      render: (r) => <span className="opa-mono perf-notify-target">{r.target || '—'}</span>,
-    },
-    { key: 'detail', header: 'Detail', render: (r) => <span className="perf-notify-detail">{r.detail || '—'}</span> },
+    { key: 'target', header: 'Target', mono: true, render: (r) => r.target || '—' },
+    { key: 'detail', header: 'Detail', render: (r) => r.detail || '—' },
   ]
 
   const filterChip = (label, value, current, setter, count) => (
     <button
       key={`${label}-${value}`}
       type="button"
-      className={`perf-notify-chip ${current === value ? 'active' : ''}`}
+      className={`opl-chip${current === value ? ' is-active' : ''}`}
       aria-pressed={current === value}
       onClick={() => setter(value)}
     >
       {label}
-      {count != null && <span className="perf-notify-chip-count">{count}</span>}
+      {count != null && <span className="opl-chip-count oui-num">{count}</span>}
     </button>
   )
 
   return (
     <>
-      <Panel
+      <Card
         title="Notification channels"
-        actions={(
-          <span className="perf-notify-head">
-            <span className={`perf-notify-mode ${mode === 'log' ? 'log' : 'deliver'}`}>
-              <span className="perf-notify-result-mark" aria-hidden="true" />
-              mode: {mode}
-            </span>
-            <span className="perf-notify-statuses">on {runNotify?.statuses || 'terminal'}</span>
-          </span>
-        )}
+        description={`Where a terminal run reports to. Delivery mode is ${mode}, on ${runNotify?.statuses || 'terminal'} statuses.`}
       >
-        <div className="perf-notify-body">
+        <Stack>
           {mode === 'log' && (
-            <div className="perf-notify-banner log">
-              Delivery mode is <strong>log</strong> — attempts are recorded as <code>logged</code> and nothing
-              leaves this deployment. Set <code>OPL_RUN_NOTIFY_MODE=deliver</code> on opl-api to send for real.
-            </div>
+            <Banner tone="warning" title="Delivery mode is log">
+              Attempts are recorded as
+              {' '}
+              <Code>logged</Code>
+              {' '}
+              and nothing leaves this deployment. Set
+              {' '}
+              <Code>OPL_RUN_NOTIFY_MODE=deliver</Code>
+              {' '}
+              on opl-api to send for real.
+            </Banner>
           )}
           {channels.length === 0 && (
-            <p className="perf-hint">
-              Channel status unavailable — <code>/api/health</code> did not report <code>run_notify.channels</code>.
+            <p className="oui-text-sm oui-text-muted">
+              Channel status unavailable —
+              {' '}
+              <Code>/api/health</Code>
+              {' '}
+              did not report
+              {' '}
+              <Code>run_notify.channels</Code>
+              .
             </p>
           )}
-          <div className="perf-notify-strip">
+          <div className="opl-notify-strip">
             {channels.map((c) => (
               <ChannelCard
                 key={c.name}
@@ -217,71 +229,93 @@ export default function NotifyChannels({ runNotify, runId, onError }) {
               />
             ))}
           </div>
-          <p className="perf-hint">
+          <p className="oui-text-sm oui-text-muted">
             {notConfigured.length === 0
               ? 'All channels are configured. Every terminal run records one history row per channel.'
               : `${notConfigured.length} of ${channels.length} channel${channels.length === 1 ? '' : 's'} `
                 + `${notConfigured.length === 1 ? 'is' : 'are'} not configured. Unconfigured channels are listed `
                 + 'with the reason rather than hidden — nothing is sent on them.'}
           </p>
-          <div>
-            <button type="button" className="opa-btn ghost" disabled={testing} onClick={sendTest}>
-              <FiSend size={12} /> Send test notification
-            </button>
-            <span className="perf-hint" style={{ marginLeft: 8 }}>
-              Synthetic terminal event with zeroed metrics — proves channel wiring, not a load run.
+          <div className="oui-row">
+            <Button icon={<FiSend />} disabled={testing} onClick={sendTest}>Send a test notification</Button>
+            <span className="oui-text-sm oui-text-muted">
+              A synthetic terminal event with zeroed metrics. It proves the channel wiring, not a load run.
             </span>
           </div>
-        </div>
-      </Panel>
+        </Stack>
+      </Card>
 
-      <Panel
+      <Card
         title="Notification history"
-        loading={loading}
-        actions={(
-          <span className="perf-notify-head">
-            <span className="perf-notify-statuses">{rows.length} of {counts.total} attempts</span>
-            {(channelFilter || resultFilter) && (
-              <button
-                type="button"
-                className="opa-btn ghost"
-                style={{ padding: '0 6px', fontSize: 11 }}
-                onClick={() => { setChannelFilter(''); setResultFilter('') }}
-              >
-                Reset filters
-              </button>
-            )}
-          </span>
-        )}
+        description="Every delivery attempt, including the ones that were deliberately not sent. History is a record of what happened and is not rewritten when the configuration changes."
+        actions={(channelFilter || resultFilter)
+          ? (
+            <Button size="sm" variant="ghost" onClick={() => { setChannelFilter(''); setResultFilter('') }}>
+              Reset filters
+            </Button>
+          )
+          : undefined}
+        flush
       >
-        <div className="perf-notify-filters">
-          <div className="perf-notify-filter-row">
-            <span className="perf-notify-filter-label">Channel</span>
+        <div className="opl-notify-filters">
+          <div className="opl-notify-filter-row">
+            <span className="opl-notify-filter-label">Channel</span>
             {filterChip('All', '', channelFilter, setChannelFilter, counts.total)}
             {['webhook', 'chat', 'email'].map((c) => filterChip(channelLabel(c), c, channelFilter, setChannelFilter, counts.byChannel[c] || 0))}
           </div>
-          <div className="perf-notify-filter-row">
-            <span className="perf-notify-filter-label">Result</span>
+          <div className="opl-notify-filter-row">
+            <span className="opl-notify-filter-label">Result</span>
             {filterChip('All', '', resultFilter, setResultFilter, counts.total)}
             {['sent', 'failed', 'logged', 'skipped'].map((s) => filterChip(s, s, resultFilter, setResultFilter, counts.byResult[s] || 0))}
           </div>
         </div>
-        {rows.length === 0 ? (
-          <EmptyState
-            title="No delivery attempts recorded yet"
-            hint={counts.total > 0
-              ? 'No attempt matches the current filters.'
-              : 'A row is written for every channel the moment a run reaches a notified terminal status.'}
-          />
-        ) : (
-          <DataTable columns={cols} rows={rows} rowKey={(r, i) => r.id || i} maxHeight={320} />
-        )}
-        <p className="perf-hint" style={{ padding: '8px 12px 0' }}>
-          <code>sent</code> reached the destination · <code>failed</code> the destination errored ·{' '}
-          <code>logged</code> intentional no-send · <code>skipped</code> channel not configured (reason in Detail).
-          History is a record of what happened and is not rewritten when configuration changes.
-        </p>
-      </Panel>
+        <Table
+          aria-label="Notification delivery attempts"
+          compact
+          state={tableState({ loading, error, rows })}
+          columns={columns}
+          rows={rows}
+          getRowKey={(r, i) => String(r.id ?? i)}
+          emptyState={(
+            <EmptyState
+              inline
+              title="No delivery attempts recorded yet"
+              description={counts.total > 0
+                ? 'No attempt matches the current filters.'
+                : 'A row is written for every channel the moment a run reaches a notified terminal status.'}
+            />
+          )}
+          errorState={(
+            <EmptyState
+              inline
+              title="The delivery history failed to load"
+              description={`${error || 'Request failed'} — this is a read of the history table, so nothing was sent or lost.`}
+              actions={(
+                <Button variant="primary" icon={<FiRefreshCw />} onClick={() => setReloadKey((k) => k + 1)}>
+                  Retry
+                </Button>
+              )}
+            />
+          )}
+        />
+        <TableCaption>
+          <span>
+            {'Showing '}
+            <strong className="oui-num">{fmtNum(rows.length)}</strong>
+            {' of '}
+            <strong className="oui-num">{fmtNum(counts.total)}</strong>
+            {' attempts · '}
+            <Code>sent</Code>
+            {' reached the destination · '}
+            <Code>failed</Code>
+            {' the destination errored · '}
+            <Code>logged</Code>
+            {' intentional no-send · '}
+            <Code>skipped</Code>
+            {' channel not configured'}
+          </span>
+        </TableCaption>
+      </Card>
     </>
   )
 }

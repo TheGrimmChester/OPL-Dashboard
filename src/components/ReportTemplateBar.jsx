@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { FiCheck, FiPlus, FiTrash2, FiX } from 'react-icons/fi'
+import {
+  Badge, Button, Code, DefinitionList, Field, Input, Select, Stack,
+} from '@open-family/ui'
 import { apiUrl } from '../utils/apiBase'
 
 // Saved report / trend layouts: which widgets, which metrics, which window.
@@ -37,6 +40,7 @@ export function useReportTemplates(kind) {
   // the first fetch resolves; reload() re-raises it synchronously for the same
   // reason (a template saved a moment ago is not yet in `templates`).
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
   const reload = () => {
     setLoading(true)
@@ -46,28 +50,33 @@ export function useReportTemplates(kind) {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setError(null)
     axios.get(apiUrl('/api/perf/report-templates'), { params: { kind } })
       .then(({ data }) => {
         if (cancelled) return
         setTemplates(Array.isArray(data?.templates) ? data.templates : [])
       })
-      .catch(() => { if (!cancelled) setTemplates([]) })
+      .catch((e) => {
+        if (cancelled) return
+        setTemplates([])
+        setError(e.response?.data?.error || e.message || 'Request failed')
+      })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [kind, reloadKey])
 
-  return { templates, loading, reload }
+  return { templates, loading, error, reload }
 }
 
 function ChipToggle({ label, checked, onChange }) {
   return (
     <button
       type="button"
-      className={`perf-tpl-chip ${checked ? 'on' : ''}`}
+      className={`opl-chip is-toggle${checked ? ' is-active' : ''}`}
       aria-pressed={checked}
       onClick={() => onChange(!checked)}
     >
-      <span className="perf-tpl-chip-box" aria-hidden="true">{checked ? <FiCheck size={10} /> : null}</span>
+      <span className="opl-chip-box" aria-hidden="true">{checked ? <FiCheck size={11} /> : null}</span>
       {label}
     </button>
   )
@@ -146,21 +155,28 @@ function TemplateEditor({ kind, templates, initial, onClose, onSaved, onError })
   }
 
   return (
-    <div className="perf-tpl-scrim" role="dialog" aria-modal="true" aria-label="Report and trend templates">
-      <div className="perf-tpl-modal">
-        <div className="perf-tpl-modal-head">
-          <h3>Report &amp; trend templates</h3>
-          <button type="button" className="opa-btn ghost" onClick={onClose} aria-label="Close"><FiX size={13} /></button>
+    <div className="opl-modal-scrim" role="presentation" onMouseDown={onClose}>
+      <div
+        className="opl-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Report and trend templates"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="opl-modal-head">
+          <h2>Report and trend templates</h2>
+          <Button variant="ghost" aria-label="Close" icon={<FiX />} onClick={onClose} />
         </div>
-        <div className="perf-tpl-modal-body">
-          <div className="perf-tpl-list">
-            <div className="perf-tpl-list-label">Saved</div>
-            {templates.length === 0 && <div className="perf-hint">No saved layouts yet.</div>}
+        <div className="opl-modal-body">
+          <div className="opl-tpl-list">
+            <div className="opl-tpl-list-label">Saved</div>
+            {templates.length === 0 && <p className="oui-text-sm oui-text-muted">No saved layouts yet.</p>}
             {templates.map((t) => (
               <button
                 key={t.id}
                 type="button"
-                className={`perf-tpl-list-item ${draft.id === t.id ? 'active' : ''}`}
+                className={`opl-tpl-list-item${draft.id === t.id ? ' is-active' : ''}`}
+                aria-pressed={draft.id === t.id}
                 onClick={() => setDraft({
                   id: t.id,
                   name: t.name,
@@ -171,125 +187,126 @@ function TemplateEditor({ kind, templates, initial, onClose, onSaved, onError })
                 })}
               >
                 <strong>{t.name}</strong>
-                <span>{t.kind}</span>
+                <span className="oui-text-sm oui-text-muted">{t.kind}</span>
               </button>
             ))}
-            <button type="button" className="perf-tpl-list-item new" onClick={() => setDraft(emptyDraft('report'))}>
-              <FiPlus size={11} /> New report layout
-            </button>
-            <button type="button" className="perf-tpl-list-item new" onClick={() => setDraft(emptyDraft('trend'))}>
-              <FiPlus size={11} /> New trend layout
-            </button>
+            <Button size="sm" variant="ghost" icon={<FiPlus />} onClick={() => setDraft(emptyDraft('report'))}>
+              New report layout
+            </Button>
+            <Button size="sm" variant="ghost" icon={<FiPlus />} onClick={() => setDraft(emptyDraft('trend'))}>
+              New trend layout
+            </Button>
           </div>
-          <div className="perf-tpl-form">
-            <label className="perf-tpl-field">
-              <span>Name</span>
-              <input
-                className="opa-input"
-                value={draft.name}
-                placeholder="Weekly review"
-                onChange={(e) => setField({ name: e.target.value })}
-              />
-            </label>
-            <div className="perf-tpl-field">
-              <span>Kind</span>
-              <div className="perf-tpl-chiprow">
-                {['report', 'trend'].map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    className={`perf-tpl-chip round ${draft.kind === k ? 'on' : ''}`}
-                    aria-pressed={draft.kind === k}
-                    onClick={() => switchKind(k)}
-                  >
-                    {k === 'report' ? 'report · per run' : 'trend · multi-run'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="perf-tpl-field">
-              <span>Widgets</span>
-              <div className="perf-tpl-chiprow">
-                {widgets.map((wg) => (
-                  <ChipToggle
-                    key={wg}
-                    label={widgetLabel(wg)}
-                    checked={draft.widgets.includes(wg)}
-                    onChange={(on) => setField({ widgets: toggleIn(draft.widgets, wg, on) })}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="perf-tpl-field">
-              <span>Metrics</span>
-              <div className="perf-tpl-chiprow">
-                {TEMPLATE_METRICS.map((m) => (
-                  <ChipToggle
-                    key={m}
-                    label={m}
-                    checked={draft.metrics.includes(m)}
-                    onChange={(on) => setField({ metrics: toggleIn(draft.metrics, m, on) })}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="perf-tpl-field">
-              <span>Window</span>
+
+          <div className="opl-tpl-form">
+            <Stack>
+              <Field label="Name" htmlFor="tpl-name">
+                <Input
+                  id="tpl-name"
+                  value={draft.name}
+                  placeholder="Weekly review"
+                  onChange={(e) => setField({ name: e.target.value })}
+                />
+              </Field>
+
+              <Field label="Kind">
+                <div className="opl-chiprow">
+                  {['report', 'trend'].map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      className={`opl-chip${draft.kind === k ? ' is-active' : ''}`}
+                      aria-pressed={draft.kind === k}
+                      onClick={() => switchKind(k)}
+                    >
+                      {k === 'report' ? 'report · per run' : 'trend · multi-run'}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              <Field label="Widgets" hint="At least one. Unknown names are dropped on save.">
+                <div className="opl-chiprow">
+                  {widgets.map((wg) => (
+                    <ChipToggle
+                      key={wg}
+                      label={widgetLabel(wg)}
+                      checked={draft.widgets.includes(wg)}
+                      onChange={(on) => setField({ widgets: toggleIn(draft.widgets, wg, on) })}
+                    />
+                  ))}
+                </div>
+              </Field>
+
+              <Field label="Metrics">
+                <div className="opl-chiprow">
+                  {TEMPLATE_METRICS.map((m) => (
+                    <ChipToggle
+                      key={m}
+                      label={m}
+                      checked={draft.metrics.includes(m)}
+                      onChange={(on) => setField({ metrics: toggleIn(draft.metrics, m, on) })}
+                    />
+                  ))}
+                </div>
+              </Field>
+
               {draft.kind === 'trend' ? (
-                <div className="perf-tpl-chiprow">
-                  <label className="perf-tpl-num">
-                    runs
-                    <input
-                      className="opa-input"
+                <div className="opl-field-grid">
+                  <Field label="Runs in the window" htmlFor="tpl-limit">
+                    <Input
+                      id="tpl-limit"
                       type="number"
                       min="1"
                       max="100"
                       value={draft.window.limit ?? 25}
                       onChange={(e) => setField({ window: { ...draft.window, limit: Number(e.target.value) } })}
                     />
-                  </label>
-                  <label className="perf-tpl-num">
-                    SLA p95 ms
-                    <input
-                      className="opa-input"
+                  </Field>
+                  <Field label="SLA p95 (ms)" htmlFor="tpl-sla">
+                    <Input
+                      id="tpl-sla"
                       type="number"
                       min="1"
                       value={draft.window.sla_p95_ms ?? 500}
                       onChange={(e) => setField({ window: { ...draft.window, sla_p95_ms: Number(e.target.value) } })}
                     />
-                  </label>
+                  </Field>
                 </div>
               ) : (
-                <div className="perf-tpl-chiprow">
-                  <label className="perf-tpl-num">
-                    sample cap
-                    <input
-                      className="opa-input"
+                <div className="opl-field-grid">
+                  <Field label="Sample cap" htmlFor="tpl-cap">
+                    <Input
+                      id="tpl-cap"
                       type="number"
                       min="1"
                       max="5000"
                       value={draft.window.sample_cap ?? 200}
                       onChange={(e) => setField({ window: { ...draft.window, sample_cap: Number(e.target.value) } })}
                     />
-                  </label>
+                  </Field>
                 </div>
               )}
-            </div>
-            <p className="perf-hint">
-              Saved for the current organization / project, like every other lab object. Unknown widget or metric
-              names are dropped on save so an export never claims a widget the product cannot render.
-            </p>
-            <div className="perf-tpl-actions">
-              <button type="button" className="opa-btn primary" disabled={busy} onClick={save}>
-                <FiCheck size={12} /> Save template
-              </button>
-              {draft.id && (
-                <button type="button" className="opa-btn ghost" disabled={busy} onClick={remove}>
-                  <FiTrash2 size={12} /> Delete
-                </button>
-              )}
-              <button type="button" className="opa-btn ghost" disabled={busy} onClick={onClose}>Cancel</button>
-            </div>
+
+              <p className="oui-text-sm oui-text-muted">
+                Saved for the current organisation and project, like every other lab object. Unknown
+                widget or metric names are dropped on save so an export never claims a widget the
+                product cannot render.
+              </p>
+
+              <div className="oui-row">
+                <Button variant="primary" icon={<FiCheck />} disabled={busy} onClick={save}>
+                  Save template
+                </Button>
+                {draft.id && (
+                  <Button variant="danger" icon={<FiTrash2 />} disabled={busy} onClick={remove}>
+                    Delete
+                  </Button>
+                )}
+                <span className="oui-spacer" />
+                <Button variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button>
+              </div>
+            </Stack>
           </div>
         </div>
       </div>
@@ -301,11 +318,13 @@ function TemplateEditor({ kind, templates, initial, onClose, onSaved, onError })
 export function AppliedTemplate({ template, scopeLabel, note }) {
   if (!template) {
     return (
-      <div className="perf-tpl-applied">
-        <div className="perf-tpl-applied-row"><span>Template</span><strong>No template — full layout</strong></div>
-        <p className="perf-hint">Exports render every widget and metric the product can produce for this run.</p>
-        {note && <p className="perf-hint">{note}</p>}
-      </div>
+      <Stack>
+        <DefinitionList items={[{ term: 'Template', value: 'None — the full layout' }]} />
+        <p className="oui-text-sm oui-text-muted">
+          Exports render every widget and metric the product can produce for this run.
+        </p>
+        {note && <p className="oui-text-sm oui-text-muted">{note}</p>}
+      </Stack>
     )
   }
   const win = template.window || {}
@@ -313,18 +332,26 @@ export function AppliedTemplate({ template, scopeLabel, note }) {
     ? `last ${win.limit ?? win.runs ?? 25} runs · SLA p95 ${win.sla_p95_ms ?? 500} ms`
     : `sample cap ${win.sample_cap ?? 200}`
   return (
-    <div className="perf-tpl-applied">
-      <div className="perf-tpl-applied-row">
-        <span>Template</span>
-        <strong>{template.name}</strong>
-        <em className="perf-tpl-kind">{template.kind}</em>
-      </div>
-      <div className="perf-tpl-applied-row"><span>Widgets</span><code>{(template.widgets || []).join(', ') || '—'}</code></div>
-      <div className="perf-tpl-applied-row"><span>Metrics</span><code>{(template.metrics || []).join(', ') || '—'}</code></div>
-      <div className="perf-tpl-applied-row"><span>Window</span><code>{windowText}</code></div>
-      {scopeLabel && <p className="perf-hint">Saved for {scopeLabel}.</p>}
-      {note && <p className="perf-hint">{note}</p>}
-    </div>
+    <Stack>
+      <DefinitionList
+        items={[
+          {
+            term: 'Template',
+            value: (
+              <span className="oui-row">
+                <strong>{template.name}</strong>
+                <Badge tone="accent">{template.kind}</Badge>
+              </span>
+            ),
+          },
+          { term: 'Widgets', value: <Code>{(template.widgets || []).join(', ') || '—'}</Code> },
+          { term: 'Metrics', value: <Code>{(template.metrics || []).join(', ') || '—'}</Code> },
+          { term: 'Window', value: <Code>{windowText}</Code> },
+        ]}
+      />
+      {scopeLabel && <p className="oui-text-sm oui-text-muted">{`Saved for ${scopeLabel}.`}</p>}
+      {note && <p className="oui-text-sm oui-text-muted">{note}</p>}
+    </Stack>
   )
 }
 
@@ -345,29 +372,21 @@ export default function ReportTemplateBar({
   }
 
   return (
-    <span className="perf-tpl-bar">
-      <span className="perf-tpl-bar-label">{label || 'Template'}</span>
-      <select
-        className="opa-input perf-tpl-select"
+    <span className="opl-tpl-bar">
+      <Select
+        aria-label={label || 'Template'}
+        className="opl-tpl-select"
+        options={[
+          { value: '', label: 'No template — the full layout' },
+          ...templates.map((t) => ({ value: t.id, label: t.name })),
+        ]}
         value={selectedId || ''}
         onChange={(e) => onSelect(e.target.value)}
-        aria-label={label || 'Template'}
-      >
-        <option value="">No template — full layout</option>
-        {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
-      <button
-        type="button"
-        className="opa-btn ghost"
-        style={{ padding: '0 6px', fontSize: 11 }}
-        onClick={() => setEditing(emptyDraft(kind))}
-      >
-        Save as template…
-      </button>
-      <button
-        type="button"
-        className="opa-btn ghost"
-        style={{ padding: '0 6px', fontSize: 11 }}
+      />
+      <Button size="sm" onClick={() => setEditing(emptyDraft(kind))}>Save as…</Button>
+      <Button
+        size="sm"
+        variant="ghost"
         onClick={() => setEditing(selected ? {
           id: selected.id,
           name: selected.name,
@@ -378,7 +397,7 @@ export default function ReportTemplateBar({
         } : emptyDraft(kind))}
       >
         Manage
-      </button>
+      </Button>
       {editing && (
         <TemplateEditor
           kind={kind}

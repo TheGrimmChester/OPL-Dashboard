@@ -28,11 +28,16 @@ VITE_OPA_HUB_URL=http://127.0.0.1:3000 npm run dev
 VITE_OPA_DASHBOARD_URL=http://127.0.0.1:3000 npm run dev
 ```
 
-## Build
+## Build and test
 
 ```bash
 npm run build
+npm test
 ```
+
+`npm test` is the token and route contract: every custom property resolves, no retired local
+token came back, no raw pixel value sits in a spatial declaration, all nine of the former
+in-page tabs are reachable, and no two rail items share a glyph.
 
 ## Docker
 
@@ -52,10 +57,11 @@ See [docs/configuration.md](docs/configuration.md).
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
+- [Architecture](docs/architecture.md) — routes, presentation, and how to verify a change
 - [Install](docs/install.md)
 - [Configuration](docs/configuration.md)
 - [Changelog](docs/changelog.md)
+- [Design review](designs/family-design-system/README.md) — every route, both themes
 
 ## License
 

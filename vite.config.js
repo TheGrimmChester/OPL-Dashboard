@@ -3,6 +3,12 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  // `@open-family/ui` is linked with `file:`, so Vite resolves through the
+  // symlink to the real path — without this, `import 'react'` inside the kit
+  // finds the kit's own copy and you get two Reacts and an invalid hook call.
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
