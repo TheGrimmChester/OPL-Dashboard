@@ -1,5 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react'
-import { FiChevronDown, FiChevronRight, FiPlus, FiTrash2 } from 'react-icons/fi'
+import {
+  FiArrowDown, FiArrowUp, FiChevronDown, FiChevronRight, FiPlus, FiTrash2,
+} from 'react-icons/fi'
+import { Button, EmptyState } from '@open-family/ui'
 
 /** Path into nested steps: e.g. [0, 'children', 1] */
 export function getAtPath(steps, path) {
@@ -232,10 +235,11 @@ function TreeNode({
   }
 
   return (
-    <div className="vu-tree-node" style={{ marginLeft: depth * 12 }}>
+    <div className="opl-vu-node" data-depth={depth}>
       <button
         type="button"
-        className={`vu-tree-row ${isSel ? 'selected' : ''} ${dropMode ? `drop-${dropMode}` : ''}`}
+        className={`opl-vu-row ${isSel ? 'is-selected' : ''} ${dropMode ? `is-drop-${dropMode}` : ''}`}
+        aria-current={isSel ? 'true' : undefined}
         onClick={() => onSelect(path)}
         draggable
         onDragStart={onDragStart}
@@ -246,15 +250,15 @@ function TreeNode({
       >
         {canNest && kids.length > 0 ? (
           <span
-            className="vu-tree-twist"
+            className="opl-vu-twist"
             onClick={(e) => { e.stopPropagation(); onToggle(key) }}
             role="presentation"
           >
-            {open ? <FiChevronDown size={12} /> : <FiChevronRight size={12} />}
+            {open ? <FiChevronDown size={16} /> : <FiChevronRight size={16} />}
           </span>
-        ) : <span className="vu-tree-twist spacer" />}
-        <span className={`vu-tree-badge type-${(step.type || 'http').replace('_controller', '')}`}>{typeLabel(step)}</span>
-        <span className="vu-tree-name">{step.name || step.url || '(unnamed)'}</span>
+        ) : <span className="opl-vu-twist is-spacer" />}
+        <span className={`opl-vu-badge is-${(step.type || 'http').replace('_controller', '')}`}>{typeLabel(step)}</span>
+        <span className="opl-vu-name">{step.name || step.url || '(unnamed)'}</span>
       </button>
       {canNest && open && kids.map((child, i) => (
         <TreeNode
@@ -355,36 +359,40 @@ export default function VuTree({
   }
 
   return (
-    <div className="vu-tree">
-      <div className="vu-tree-toolbar">
-        <button type="button" className="opa-btn ghost" onClick={() => addRoot('http')} title="Add HTTP request"><FiPlus size={12} /> HTTP</button>
-        <button type="button" className="opa-btn ghost" onClick={() => addRoot('transaction')} title="Add transaction container"><FiPlus size={12} /> Txn</button>
-        <button type="button" className="opa-btn ghost" onClick={() => addRoot('if')} title="Add If controller">If</button>
-        <button type="button" className="opa-btn ghost" onClick={() => addRoot('while')} title="Add While controller">While</button>
-        <button type="button" className="opa-btn ghost" onClick={() => addRoot('loop')} title="Add Loop controller">Loop</button>
-        <button type="button" className="opa-btn ghost" onClick={() => addRoot('foreach')} title="Add ForEach controller">ForEach</button>
-        <button type="button" className="opa-btn ghost" onClick={() => addRoot('fragment')} title="Add reusable fragment">Frag</button>
-        <button type="button" className="opa-btn ghost" onClick={() => addRoot('include')} title="Link to a named fragment">Link</button>
-        <button type="button" className="opa-btn ghost" onClick={() => addChild('rendezvous')} title="Hold threads until the group fills, then release them together">Burst</button>
-        <button type="button" className="opa-btn ghost" onClick={() => addChild('extract')} title="Nest extract under selected HTTP">Extract</button>
-        <button type="button" className="opa-btn ghost" onClick={() => addChild('assert')} title="Nest assert under selected HTTP">Assert</button>
-        <button type="button" className="opa-btn ghost" disabled={!selectedPath} onClick={() => moveSelected(-1)} aria-label="Move up">↑</button>
-        <button type="button" className="opa-btn ghost" disabled={!selectedPath} onClick={() => moveSelected(1)} aria-label="Move down">↓</button>
-        <button type="button" className="opa-btn ghost" disabled={!selectedPath} onClick={removeSelected} aria-label="Remove"><FiTrash2 size={12} /></button>
+    <div className="opl-vu">
+      <div className="opl-vu-toolbar">
+        <Button size="sm" icon={<FiPlus />} onClick={() => addRoot('http')} title="Add HTTP request">HTTP</Button>
+        <Button size="sm" icon={<FiPlus />} onClick={() => addRoot('transaction')} title="Add transaction container">Txn</Button>
+        <Button size="sm" variant="ghost" onClick={() => addRoot('if')} title="Add If controller">If</Button>
+        <Button size="sm" variant="ghost" onClick={() => addRoot('while')} title="Add While controller">While</Button>
+        <Button size="sm" variant="ghost" onClick={() => addRoot('loop')} title="Add Loop controller">Loop</Button>
+        <Button size="sm" variant="ghost" onClick={() => addRoot('foreach')} title="Add ForEach controller">ForEach</Button>
+        <Button size="sm" variant="ghost" onClick={() => addRoot('fragment')} title="Add reusable fragment">Frag</Button>
+        <Button size="sm" variant="ghost" onClick={() => addRoot('include')} title="Link to a named fragment">Link</Button>
+        <Button size="sm" variant="ghost" onClick={() => addChild('rendezvous')} title="Hold threads until the group fills, then release them together">Burst</Button>
+        <Button size="sm" variant="ghost" onClick={() => addChild('extract')} title="Nest extract under selected HTTP">Extract</Button>
+        <Button size="sm" variant="ghost" onClick={() => addChild('assert')} title="Nest assert under selected HTTP">Assert</Button>
+        <span className="oui-spacer" />
+        <Button size="sm" variant="ghost" aria-label="Move selected node up" icon={<FiArrowUp />} disabled={!selectedPath} onClick={() => moveSelected(-1)} />
+        <Button size="sm" variant="ghost" aria-label="Move selected node down" icon={<FiArrowDown />} disabled={!selectedPath} onClick={() => moveSelected(1)} />
+        <Button size="sm" variant="ghost" aria-label="Remove selected node" icon={<FiTrash2 />} disabled={!selectedPath} onClick={removeSelected} />
       </div>
-      <p className="perf-hint" style={{ margin: '0 0 8px' }}>
-        Drag to reorder (or drop onto If/While/Loop/ForEach/Txn/Frag/HTTP to nest). Fragments are definitions kept once
-        in the plan; Link references one by name. Burst holds threads until the group fills, then releases them together —
-        it applies to the requests in its parent, so drop it on a single request to gate only that one. Controllers round-trip through JMX.
+      <p className="oui-text-sm oui-text-muted opl-vu-hint">
+        Drag a row to reorder it, or drop it onto an If / While / Loop / ForEach / Txn / Frag / HTTP
+        row to nest it inside. Fragments are definitions kept once in the plan; Link references one by
+        name. Burst holds threads until the group fills, then releases them together — it applies to the
+        requests in its parent, so drop it on a single request to gate only that one. Controllers
+        round-trip through JMX.
       </p>
       {!roots.length ? (
-        <div className="perf-empty-cta">
-          <div className="title">Empty virtual user</div>
-          <div className="perf-hint">Add an HTTP request, Transaction, or logic controller to start the journey tree.</div>
-        </div>
+        <EmptyState
+          inline
+          title="Empty virtual user"
+          description="Add an HTTP request, a transaction, or a logic controller to start the journey tree."
+        />
       ) : (
         <div
-          className="vu-tree-list"
+          className="opl-vu-list"
           ref={listRef}
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {

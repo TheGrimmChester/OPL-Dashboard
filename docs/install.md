@@ -10,7 +10,15 @@
 ```bash
 npm install
 npm run build
+npm test
 npm run dev
+```
+
+`@open-family/ui` is a local `file:` dependency whose entry point is `dist/`, which is not
+committed — build the kit once before this repository resolves it:
+
+```bash
+cd ../Open-UI-JS && npm install && npm run build
 ```
 
 ## Container
