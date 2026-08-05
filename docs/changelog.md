@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased
+
+### The family design system
+
+- Adopted `@open-family/ui`: the shared shell, tokens and component set. Deleted the local
+  token layer (`src/theme/{tokens,ui,light}.css`, ~440 lines), the hand-rolled shell
+  (`AppShell`, `SideRail`, `TopBar`, `ThemeToggle`) and the local primitive set
+  (`components/ui/*`). Product-specific styling is now one file, `src/perflab.css`, and every
+  value in it comes from a kit token.
+- **The nine in-page tabs became four routes plus two tab strips.** `PerfLab.jsx` was
+  2,202 lines serving its whole navigation from `?tab=`; it is now `/overview`,
+  `/scenarios` (4 tabs), `/run`, `/results` with a per-run detail at `/results/:runId`
+  (4 tabs), `/trends`, `/compare`, `/sla` and `/settings/account`. **URLs changed and there
+  are no aliases** — the mapping is in the pull request.
+- New pages: **Overview**, a real landing page rather than a redirect into the studio;
+  **Account**, which the product did not have; a **404**, where an unknown URL used to
+  redirect to the studio and hide the mistake.
+- A run's detail is now in the URL, so a result is linkable, bookmarkable and reloadable.
+  Its Errors and Resources tabs are new views over data the poller already held.
+- **Every table now has an explicit loading and error state.** Previously no error was
+  passed anywhere, so a failed request rendered as an empty result set with a misleading
+  hint — the table said "start a run" when the truth was "the request failed".
+- Density: 15px/1.6 body, 14px tables on 52px rows, 40px nav rows and buttons, 24px card
+  padding, 32px section gaps, 1440px **centred** content, 268px sidebar.
+- Top bar gains the organisation and project switcher, a command menu (⌘K), the time range,
+  a theme control and a user menu with sign-out. The switcher keeps sending
+  `X-Organization-ID` / `X-Project-ID` and still defaults to the deployment's tenant.
+- Both themes are fully correct, and the stored theme beats the operating-system preference
+  in both directions.
+- **Fixed 14 custom properties that were referenced and never defined** — `--fs-10`,
+  `--shadow-lg` and `--danger`, plus eleven in `ErrorBoundary.css`, which means the crash
+  screen was itself rendering with dropped declarations. Each one silently dropped its whole
+  declaration.
+- Charts read the family palette (`--chart-1` … `--chart-8`, `--chart-mono`) instead of local
+  `--series-*` / `--p50` / `--p95` / `--p99` tokens. The error-rate bars mark a breach by
+  shape rather than by hue: a green-versus-red column pair measures ΔE 5.2 under
+  deuteranopia, so it was not readable for a red/green-deficient viewer.
+- Added a test suite (`npm test`, vitest): the token contract, the route contract, and the
+  table-state rules. It had none before.
+- Screenshots of every route in both themes: `designs/family-design-system/`.
+
 ## 0.1.0
 
 - Virtual users & datasets: **CSV delimiter** field next to recycle/columns/rows. The value drives both the data file the engine writes and the plan element that reads it (`,` default; `\t` or `tab` for tab-separated).

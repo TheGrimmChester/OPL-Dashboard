@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiLogIn, FiUser, FiLock, FiAlertCircle } from 'react-icons/fi'
+import { FiLogIn } from 'react-icons/fi'
 import axios from 'axios'
-import { Panel } from '../components/ui'
-import './Login.css'
+import { Banner, Button, Card, Divider, Field, Input } from '@open-family/ui'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 const HUB_URL = (
@@ -137,70 +136,58 @@ function Login() {
   }
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <div className="login-brand">
-          <span className="login-brand-icon"><FiLogIn /></span>
-          <div className="login-brand-title">Open Perf Lab</div>
-          <div className="login-brand-sub">Sign in to continue</div>
+    <div className="opl-login">
+      <div className="opl-login-card">
+        <div className="opl-login-brand">
+          <span className="oui-brand-mark">OPL</span>
+          <span className="opl-login-brand-text">
+            <h1>Open Perf Lab</h1>
+            <p className="oui-text-secondary">Sign in to continue.</p>
+          </span>
         </div>
 
-        <Panel>
-          <form onSubmit={handleSubmit} className="login-form">
-            {error && (
-              <div className="login-error" role="alert">
-                <FiAlertCircle /> <span>{error}</span>
-              </div>
-            )}
+        <Card>
+          <form onSubmit={handleSubmit} className="opl-login-form">
+            {error && <Banner tone="critical" title="Sign-in failed">{error}</Banner>}
 
-            <div className="login-field">
-              <label className="login-label" htmlFor="login-username">
-                <FiUser size={12} /> Username
-              </label>
-              <input
+            <Field label="Username" htmlFor="login-username">
+              <Input
                 id="login-username"
-                className="opa-input"
                 type="text"
+                autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- the page exists to be typed into
                 autoFocus
               />
-            </div>
+            </Field>
 
-            <div className="login-field">
-              <label className="login-label" htmlFor="login-password">
-                <FiLock size={12} /> Password
-              </label>
-              <input
+            <Field label="Password" htmlFor="login-password">
+              <Input
                 id="login-password"
-                className="opa-input"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-            </div>
+            </Field>
 
-            <button
-              type="submit"
-              className="opa-btn primary login-btn"
-              disabled={loading}
-            >
-              {loading ? 'Logging in…' : 'Login'}
-            </button>
+            <Button type="submit" variant="primary" block loading={loading}>
+              {loading ? 'Signing in…' : 'Sign in'}
+            </Button>
+
+            {ssoEnabled && (
+              <>
+                <Divider />
+                <Button type="button" block icon={<FiLogIn />} onClick={startSso}>
+                  Sign in with SSO
+                </Button>
+              </>
+            )}
           </form>
-
-          {ssoEnabled && (
-            <div className="login-sso">
-              <div className="login-divider"><span>or</span></div>
-              <button type="button" className="opa-btn login-btn" onClick={startSso}>
-                <FiLogIn size={12} /> Login with SSO
-              </button>
-            </div>
-          )}
-
-        </Panel>
+        </Card>
       </div>
     </div>
   )

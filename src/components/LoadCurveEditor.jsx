@@ -1,11 +1,15 @@
 import React, { useMemo } from 'react'
 import { FiPlus, FiTrash2 } from 'react-icons/fi'
+import { Banner, Button, Field, Input, Segmented } from '@open-family/ui'
 
 /**
  * Point-curve editor for schedule.curve.
  * Modes:
  *  - vus: { t, vus } → classic ThreadGroup peak/ramp/duration
  *  - arrivals: { t, rate } → open-model arrival segments (one journey per start)
+ *
+ * The preview is a single-series line, so it wears `--chart-mono` — the product
+ * accent — and needs no legend: the panel title names it.
  */
 export default function LoadCurveEditor({
   curve = [],
@@ -92,9 +96,10 @@ export default function LoadCurveEditor({
     if (typeof onModeChange === 'function') onModeChange(next)
   }
 
-  const poly = points
+  const sorted = points
     .slice()
     .sort((a, b) => (Number(a.t) || 0) - (Number(b.t) || 0))
+  const poly = sorted
     .map((p) => {
       const x = ((Number(p.t) || 0) / maxT) * 100
       const y = 100 - ((Number(p[yKey]) || 0) / maxY) * 100
@@ -103,56 +108,65 @@ export default function LoadCurveEditor({
     .join(' ')
 
   return (
-    <div className={`load-curve-editor load-curve-editor--${mode}`}>
-      <div className="load-curve-mode" role="group" aria-label="Curve mode">
-        <button
-          type="button"
-          className={`opa-btn ghost${mode === 'vus' ? ' is-active' : ''}`}
-          aria-pressed={mode === 'vus'}
-          onClick={() => setMode('vus')}
-        >
-          Concurrent VUs
-        </button>
-        <button
-          type="button"
-          className={`opa-btn ghost${mode === 'arrivals' ? ' is-active' : ''}`}
-          aria-pressed={mode === 'arrivals'}
-          onClick={() => setMode('arrivals')}
-        >
-          Arrivals / sec
-        </button>
-      </div>
+    <div className={`opl-curve opl-curve--${mode}`}>
+      <Segmented
+        aria-label="Curve mode"
+        value={mode}
+        onChange={setMode}
+        items={[
+          { value: 'vus', label: 'Concurrent VUs' },
+          { value: 'arrivals', label: 'Arrivals / sec' },
+        ]}
+      />
 
-      <div className="load-curve-chart" aria-hidden>
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polyline fill="none" stroke="currentColor" strokeWidth="1.5" points={poly} vectorEffect="non-scaling-stroke" />
-          {points.map((p, i) => (
+      <div className="opl-curve-chart">
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={mode === 'arrivals'
+            ? `Arrival rate curve, peak ${peak} per second over ${duration} seconds`
+            : `Virtual user curve, peak ${peak} users over ${duration} seconds`}
+        >
+          <polyline
+            fill="none"
+            stroke="var(--chart-mono)"
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            points={poly}
+            vectorEffect="non-scaling-stroke"
+          />
+          {sorted.map((p, i) => (
             <circle
               key={i}
               cx={((Number(p.t) || 0) / maxT) * 100}
               cy={100 - ((Number(p[yKey]) || 0) / maxY) * 100}
-              r="2"
-              fill="currentColor"
+              r="1.6"
+              fill="var(--chart-mono)"
+              stroke="var(--chart-surface)"
+              strokeWidth="0.8"
+              vectorEffect="non-scaling-stroke"
             />
           ))}
         </svg>
       </div>
 
       {mode === 'arrivals' ? (
-        <p className="perf-hint load-curve-honesty load-curve-honesty--arrivals">
-          Arrivals curve → open-model ThreadGroup segments (one journey per arrival, rate-shaped starts).
-          {' '}Total {arrivalsCompiled?.total ?? 0} arrivals · peak {peak}/s · {duration}s.
-          {' '}Not concurrent-VU approximation.
-        </p>
+        <Banner tone="accent" title="Arrivals curve">
+          {`Compiles to open-model ThreadGroup segments — one journey per arrival, rate-shaped starts. `}
+          {`Total ${arrivalsCompiled?.total ?? 0} arrivals · peak ${peak}/s · ${duration}s. `}
+          This is not a concurrent-VU approximation.
+        </Banner>
       ) : (
-        <p className="perf-hint load-curve-honesty load-curve-honesty--vus">
-          Custom load curve → peak {peak} VUs · duration {duration}s · ramp-to-peak {ramp}s
-          (ThreadGroup approximation — not arrivals-accurate).
-        </p>
+        <Banner tone="warning" title="Custom load curve">
+          {`Peak ${peak} VUs · duration ${duration}s · ramp-to-peak ${ramp}s. `}
+          A ThreadGroup approximation — not arrivals-accurate.
+        </Banner>
       )}
 
       {mode === 'arrivals' && arrivalsCompiled?.segs?.length > 0 && (
-        <div className="load-curve-segments" aria-live="polite">
+        <div className="opl-curve-segments" aria-live="polite">
           {arrivalsCompiled.segs.map((s, i) => (
             <div key={i}>
               t={s.delay}→{s.delay + s.ramp}s · {s.arrivals} starts · avg {Number(s.avg).toFixed(2)}/s
@@ -161,24 +175,20 @@ export default function LoadCurveEditor({
         </div>
       )}
 
-      <div className="load-curve-points">
+      <div className="opl-curve-points">
         {points.map((p, i) => (
-          <div className="load-curve-row" key={i}>
-            <label>
-              t (s)
-              <input
-                className="opa-input"
+          <div className="opl-curve-row" key={i}>
+            <Field label="t (s)">
+              <Input
                 type="number"
                 min={0}
                 value={p.t ?? 0}
                 onChange={(e) => updatePoint(i, { t: Number(e.target.value) })}
-                aria-label={`Point ${i + 1} time seconds`}
+                aria-label={`Point ${i + 1} time in seconds`}
               />
-            </label>
-            <label>
-              {mode === 'arrivals' ? 'rate / s' : 'VUs'}
-              <input
-                className="opa-input"
+            </Field>
+            <Field label={mode === 'arrivals' ? 'rate / s' : 'VUs'}>
+              <Input
                 type="number"
                 min={0}
                 step={mode === 'arrivals' ? 'any' : 1}
@@ -190,27 +200,22 @@ export default function LoadCurveEditor({
                   ? `Point ${i + 1} arrivals per second`
                   : `Point ${i + 1} virtual users`}
               />
-            </label>
-            <button
-              type="button"
-              className="opa-btn ghost"
+            </Field>
+            <Button
+              variant="ghost"
+              icon={<FiTrash2 />}
               disabled={points.length <= 2}
               onClick={() => removePoint(i)}
               aria-label={`Remove point ${i + 1}`}
-            >
-              <FiTrash2 size={12} />
-            </button>
+            />
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        <button type="button" className="opa-btn ghost" onClick={addPoint}>
-          <FiPlus size={12} /> Add point
-        </button>
+
+      <div className="oui-row">
+        <Button icon={<FiPlus />} onClick={addPoint}>Add point</Button>
         {typeof onApplyPeak === 'function' && (
-          <button
-            type="button"
-            className="opa-btn ghost"
+          <Button
             onClick={() => onApplyPeak({
               mode,
               peak: mode === 'arrivals' ? (arrivalsCompiled?.total || peak) : peak,
@@ -221,11 +226,11 @@ export default function LoadCurveEditor({
               peakRate: mode === 'arrivals' ? peak : undefined,
             })}
             title={mode === 'arrivals'
-              ? 'Apply total arrivals + duration from arrivals curve'
-              : 'Apply peak VUs / duration / ramp from curve'}
+              ? 'Apply total arrivals + duration from the arrivals curve'
+              : 'Apply peak VUs / duration / ramp from the curve'}
           >
-            {mode === 'arrivals' ? 'Apply arrivals schedule' : 'Apply to VUs & duration'}
-          </button>
+            {mode === 'arrivals' ? 'Apply arrivals schedule' : 'Apply to VUs and duration'}
+          </Button>
         )}
       </div>
     </div>

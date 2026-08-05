@@ -1,7 +1,13 @@
 import React from 'react'
-import { Link } from 'react-router-dom'
-import './ErrorBoundary.css'
+import { FiAlertTriangle, FiRefreshCw } from 'react-icons/fi'
+import { Button, Card, EmptyState } from '@open-family/ui'
 
+/**
+ * The last line of defence. Built from kit components rather than its own
+ * stylesheet — the deleted `ErrorBoundary.css` referenced eleven custom
+ * properties that no stylesheet in this repository ever defined, so the crash
+ * screen was itself rendering with dropped declarations.
+ */
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props)
@@ -19,25 +25,28 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="error-boundary">
-          <div className="error-boundary-content">
-            <h2>Something went wrong</h2>
-            <p>An error occurred while rendering this page.</p>
-            {process.env.NODE_ENV === 'development' && this.state.error && (
-              <details className="error-details">
-                <summary>Error details</summary>
-                <pre>{this.state.error.toString()}</pre>
+        <div className="opl-boundary">
+          <Card>
+            <EmptyState
+              icon={<FiAlertTriangle size={24} />}
+              title="This page stopped rendering"
+              description="Something in the interface threw. Nothing was sent to the API and no run was affected — reloading restores the page."
+              actions={(
+                <>
+                  <Button variant="primary" icon={<FiRefreshCw />} onClick={() => window.location.reload()}>
+                    Reload the page
+                  </Button>
+                  <Button onClick={() => window.location.assign('/overview')}>Go to Overview</Button>
+                </>
+              )}
+            />
+            {import.meta.env.DEV && this.state.error && (
+              <details className="opl-raw">
+                <summary>Error detail</summary>
+                <pre className="opl-code-well">{this.state.error.toString()}</pre>
               </details>
             )}
-            <div className="error-boundary-actions">
-              <button onClick={() => window.location.reload()}>
-                Reload Page
-              </button>
-              <Link to="/" className="button-link">
-                Go to Home
-              </Link>
-            </div>
-          </div>
+          </Card>
         </div>
       )
     }
@@ -47,4 +56,3 @@ class ErrorBoundary extends React.Component {
 }
 
 export default ErrorBoundary
-
