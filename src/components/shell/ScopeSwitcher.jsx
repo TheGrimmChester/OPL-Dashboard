@@ -20,9 +20,12 @@ export default function ScopeSwitcher() {
   const {
     organizationId, projectId, setOrganizationId, setProjectId,
     organizations, projects, defaultOrganizationId, defaultProjectId,
+    isPersonalAccount: personal, orgLocked,
   } = useTenant()
   const [draftOrg, setDraftOrg] = useState('')
   const [draftProject, setDraftProject] = useState('')
+
+  if (personal) return null
 
   const applyDraft = () => {
     if (draftOrg.trim()) setOrganizationId(draftOrg.trim())
@@ -38,13 +41,19 @@ export default function ScopeSwitcher() {
       initials={organizationId.slice(0, 2)}
     >
       <MenuLabel>Organisation</MenuLabel>
-      {organizations.map((id) => (
-        <MenuItem key={id} checked={id === organizationId} onSelect={() => setOrganizationId(id)}>
-          {id}
-          {id === defaultOrganizationId ? ' · default' : ''}
-        </MenuItem>
-      ))}
-      <MenuSeparator />
+      {!orgLocked ? (
+        <>
+          {organizations.map((id) => (
+            <MenuItem key={id} checked={id === organizationId} onSelect={() => setOrganizationId(id)}>
+              {id}
+              {id === defaultOrganizationId ? ' · default' : ''}
+            </MenuItem>
+          ))}
+          <MenuSeparator />
+        </>
+      ) : (
+        <MenuItem checked disabled>{organizationId}</MenuItem>
+      )}
       <MenuLabel>Project</MenuLabel>
       {projects.map((id) => (
         <MenuItem key={id} checked={id === projectId} onSelect={() => setProjectId(id)}>
@@ -53,34 +62,38 @@ export default function ScopeSwitcher() {
         </MenuItem>
       ))}
       <MenuSeparator />
-      <MenuLabel>Another scope</MenuLabel>
-      <div className="opl-scope-form">
-        <Input
-          aria-label="Organisation identifier"
-          placeholder={organizationId}
-          value={draftOrg}
-          onChange={(e) => setDraftOrg(e.target.value)}
-        />
-        <Input
-          aria-label="Project identifier"
-          placeholder={projectId}
-          value={draftProject}
-          onChange={(e) => setDraftProject(e.target.value)}
-        />
-        <Button
-          size="sm"
-          variant="primary"
-          block
-          disabled={!draftOrg.trim() && !draftProject.trim()}
-          onClick={applyDraft}
-        >
-          Switch scope
-        </Button>
-        <p className="oui-text-sm oui-text-muted">
-          Every lab object — scenarios, runs, report templates — is stored per scope.
-          Changing it reloads the lists against the new headers.
-        </p>
-      </div>
+      {!orgLocked ? (
+        <>
+          <MenuLabel>Another scope</MenuLabel>
+          <div className="opl-scope-form">
+            <Input
+              aria-label="Organisation identifier"
+              placeholder={organizationId}
+              value={draftOrg}
+              onChange={(e) => setDraftOrg(e.target.value)}
+            />
+            <Input
+              aria-label="Project identifier"
+              placeholder={projectId}
+              value={draftProject}
+              onChange={(e) => setDraftProject(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="primary"
+              block
+              disabled={!draftOrg.trim() && !draftProject.trim()}
+              onClick={applyDraft}
+            >
+              Switch scope
+            </Button>
+            <p className="oui-text-sm oui-text-muted">
+              Every lab object — scenarios, runs, report templates — is stored per scope.
+              Changing it reloads the lists against the new headers.
+            </p>
+          </div>
+        </>
+      ) : null}
     </OrgSwitcher>
   )
 }

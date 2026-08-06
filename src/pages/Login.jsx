@@ -1,26 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiLogIn } from 'react-icons/fi'
+import { FiKey, FiLogIn } from 'react-icons/fi'
 import axios from 'axios'
-import { Banner, Button, Card, Divider, Field, Input } from '@open-family/ui'
+import { Banner, Button, Card, Divider, Field, Input, Textarea } from '@open-family/ui'
+import { decodeJwtPayload, persistAccountFromLogin, persistAccountFromToken } from '../utils/accountType'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
-const HUB_URL = (
-  import.meta.env.VITE_OPA_HUB_URL
-  || import.meta.env.VITE_OPA_DASHBOARD_URL
-  || ''
-).replace(/\/$/, '')
-
-// Decode a JWT payload (no verification — display only; the server verifies).
-function decodeJwt(token) {
-  try {
-    const part = token.split('.')[1]
-    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'))
-    return JSON.parse(json)
-  } catch {
-    return null
-  }
-}
+const OAM_URL = (import.meta.env.VITE_OAM_URL || '').replace(/\/$/, '')
 
 // Post-login redirect target: honor a ?next= query param (set by the 401
 // interceptor) but only allow same-app relative paths; fall back to '/'.
@@ -35,15 +21,16 @@ function storeSession(data) {
   const user = data.user || data
   if (user.username) localStorage.setItem('username', user.username)
   if (user.role) localStorage.setItem('role', user.role)
+  persistAccountFromLogin(data)
 }
 
-/** Hub issues JWTs when codeployed; product /api/auth/login returns 503. */
+/** OAM issues JWTs when codeployed; product /api/auth/login returns 503. */
 async function resolveAuthBase() {
-  if (HUB_URL) return HUB_URL
+  if (OAM_URL) return OAM_URL
   try {
     const { data } = await axios.get(`${API_URL}/api/auth/status`)
     if (data?.mode === 'codeployed' || data?.mode === 'hub' || data?.standalone === false) {
-      return '/hub-auth'
+      return '/oam-auth'
     }
   } catch {
     /* standalone or status unavailable — fall through to product API */
@@ -59,6 +46,8 @@ function Login() {
   const [loading, setLoading] = useState(false)
   const [ssoEnabled, setSsoEnabled] = useState(false)
   const [authBase, setAuthBase] = useState(API_URL)
+  const [showToken, setShowToken] = useState(false)
+  const [token, setToken] = useState(() => localStorage.getItem('auth_token') || '')
 
   // Capture the token the OIDC callback puts in the URL fragment (#token=...&
   // dnonce=...). Only accept it if dnonce matches the value this SPA stored
@@ -79,11 +68,12 @@ function Login() {
         window.history.replaceState(null, '', window.location.pathname)
         sessionStorage.removeItem('oidc_dnonce')
         if (token && expected && dnonce && dnonce === expected) {
-          const claims = decodeJwt(token)
+          const claims = decodeJwtPayload(token)
           if (claims) {
             localStorage.setItem('auth_token', token)
             if (claims.username) localStorage.setItem('username', claims.username)
             if (claims.role) localStorage.setItem('role', claims.role)
+            persistAccountFromLogin(claims)
             navigate(target)
             return
           }
@@ -133,6 +123,21 @@ function Login() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const saveToken = (e) => {
+    e.preventDefault()
+    const value = token.trim()
+    if (value) {
+      localStorage.setItem('auth_token', value)
+      persistAccountFromToken(value)
+      const claims = decodeJwtPayload(value)
+      if (claims?.username) localStorage.setItem('username', claims.username)
+      if (claims?.role) localStorage.setItem('role', claims.role)
+    } else {
+      localStorage.removeItem('auth_token')
+    }
+    navigate(nextTarget())
   }
 
   return (
@@ -188,6 +193,33 @@ function Login() {
             )}
           </form>
         </Card>
+
+        <Button variant="ghost" icon={<FiKey />} block onClick={() => setShowToken((v) => !v)}>
+          {showToken ? 'Hide token paste' : 'Paste a bearer token instead'}
+        </Button>
+
+        {showToken ? (
+          <Card>
+            <form onSubmit={saveToken} className="opl-login-form">
+              <Field
+                label="Bearer token"
+                htmlFor="opl-login-token"
+                hint="An OAM-issued JWT. Saving it here signs this browser in without a password round-trip."
+              >
+                <Textarea
+                  id="opl-login-token"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder="Paste an OAM-issued JWT"
+                  rows={4}
+                />
+              </Field>
+              <Button type="submit" variant="primary" icon={<FiLogIn />} block>
+                {token.trim() ? 'Save and continue' : 'Continue without a token'}
+              </Button>
+            </form>
+          </Card>
+        ) : null}
       </div>
     </div>
   )

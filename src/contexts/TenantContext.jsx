@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useState } from 'react'
 import axios from 'axios'
 
+import {
+  isPersonalAccount, lockedOrgId, readAccountType,
+} from '../utils/accountType'
+
 const ALL = 'all'
 const DEFAULT_ORG = 'default-org'
 const DEFAULT_PROJECT = 'default-project'
@@ -29,7 +33,12 @@ const tenantHeaders = {
 // Every scoped list on the API keys off these two headers. The switcher in the
 // top bar changes their values; it never stops sending them.
 axios.interceptors.request.use((config) => {
-  if (tenantHeaders.organizationId) config.headers['X-Organization-ID'] = tenantHeaders.organizationId
+  if (isPersonalAccount()) {
+    if (tenantHeaders.projectId) config.headers['X-Project-ID'] = tenantHeaders.projectId
+    return config
+  }
+  const org = lockedOrgId() || tenantHeaders.organizationId
+  if (org) config.headers['X-Organization-ID'] = org
   if (tenantHeaders.projectId) config.headers['X-Project-ID'] = tenantHeaders.projectId
   return config
 })
@@ -77,9 +86,14 @@ export const useTenant = () => {
 
 /** Headers-only tenant provider, plus the shortcut list the top-bar switcher shows. */
 export const TenantProvider = ({ children }) => {
-  const [organizationId, setOrganizationId] = useState(
-    () => localStorage.getItem('organization_id') || DEFAULT_ORG,
-  )
+  const [accountType] = useState(() => readAccountType())
+  const orgLocked = !!lockedOrgId()
+  const [organizationId, setOrganizationId] = useState(() => {
+    const locked = lockedOrgId()
+    if (locked) return locked
+    if (isPersonalAccount(accountType)) return DEFAULT_ORG
+    return localStorage.getItem('organization_id') || DEFAULT_ORG
+  })
   const [projectId, setProjectId] = useState(
     () => localStorage.getItem('project_id') || DEFAULT_PROJECT,
   )
@@ -91,6 +105,7 @@ export const TenantProvider = ({ children }) => {
   )
 
   const setOrg = (id) => {
+    if (orgLocked || isPersonalAccount(accountType)) return
     const v = id || DEFAULT_ORG
     localStorage.setItem('organization_id', v)
     tenantHeaders.organizationId = v
@@ -118,6 +133,9 @@ export const TenantProvider = ({ children }) => {
       defaultOrganizationId: DEFAULT_ORG,
       defaultProjectId: DEFAULT_PROJECT,
       loading: false,
+      accountType,
+      isPersonalAccount: isPersonalAccount(accountType),
+      orgLocked,
     }}
     >
       {children}
