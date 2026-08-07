@@ -15,7 +15,7 @@ import { THEME_KEY } from '../nav'
  */
 export default function Account() {
   const { theme, setTheme } = useTheme(THEME_KEY)
-  const { organizationId, projectId, defaultOrganizationId, defaultProjectId } = useTenant()
+  const { organizationId, projectId, isPersonalAccount: personal } = useTenant()
 
   const username = localStorage.getItem('username') || '—'
   const role = localStorage.getItem('role') || '—'
@@ -27,6 +27,10 @@ export default function Account() {
     localStorage.removeItem('role')
     window.location.assign('/login')
   }
+
+  const orgDisplay = personal
+    ? 'My account'
+    : (!organizationId || organizationId === 'all' ? '—' : organizationId)
 
   return (
     <Stack gap="sections">
@@ -55,9 +59,8 @@ export default function Account() {
       >
         <DefinitionList
           items={[
-            { term: 'Organisation', value: organizationId, mono: true },
-            { term: 'Project', value: projectId, mono: true },
-            { term: 'Deployment default', value: `${defaultOrganizationId} / ${defaultProjectId}`, mono: true },
+            { term: 'Organisation', value: orgDisplay, mono: true },
+            { term: 'Project', value: projectId || '—', mono: true },
           ]}
         />
       </Card>

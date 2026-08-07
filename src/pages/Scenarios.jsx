@@ -4,6 +4,7 @@ import { FiCheck, FiPlay, FiSave } from 'react-icons/fi'
 import { Button, PageHeader, Stack, SubNav } from '@open-family/ui'
 import { SCENARIO_TABS } from '../nav'
 import { usePerfLab } from '../perflab/PerfLabContext'
+import ProjectWriteBanner from '../components/ProjectWriteBanner'
 import { fmtNum } from '../theme/format'
 
 /**
@@ -15,7 +16,7 @@ export default function Scenarios() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const {
-    form, selectedId, busy, scnRows, engineLabel, scopeLabel,
+    form, selectedId, busy, scnRows, engineLabel, scopeLabel, hasConcreteProject,
     saveScenario, validateScenario, startRun,
   } = usePerfLab()
 
@@ -33,17 +34,18 @@ export default function Scenarios() {
         ]}
         actions={(
           <>
-            <Button icon={<FiSave />} disabled={busy} onClick={saveScenario}>Save scenario</Button>
-            <Button icon={<FiCheck />} disabled={busy || !selectedId} onClick={validateScenario}>
+            <Button icon={<FiSave />} disabled={busy || !hasConcreteProject} onClick={saveScenario}>Save scenario</Button>
+            <Button icon={<FiCheck />} disabled={busy || !selectedId || !hasConcreteProject} onClick={validateScenario}>
               Validate 1 VU
             </Button>
-            <Button variant="primary" icon={<FiPlay />} disabled={busy || !selectedId} onClick={() => startRun()}>
+            <Button variant="primary" icon={<FiPlay />} disabled={busy || !selectedId || !hasConcreteProject} onClick={() => startRun()}>
               Start run
             </Button>
           </>
         )}
         flush
       />
+      <ProjectWriteBanner hasConcreteProject={hasConcreteProject} />
       <SubNav
         aria-label="Scenario views"
         items={SCENARIO_TABS}

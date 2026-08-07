@@ -24,17 +24,27 @@ function storeSession(data) {
   persistAccountFromLogin(data)
 }
 
-/** OAM issues JWTs when codeployed; product /api/auth/login returns 503. */
+/**
+ * OAM issues JWTs when codeployed; product /api/auth/login returns 503.
+ * Prefer same-origin /oam-auth so CSP connect-src 'self' allows login XHR.
+ * Absolute VITE_OAM_URL is for deep-links only — never for browser auth.
+ */
 async function resolveAuthBase() {
-  if (OAM_URL) return OAM_URL
   try {
     const { data } = await axios.get(`${API_URL}/api/auth/status`)
     if (data?.mode === 'codeployed' || data?.mode === 'hub' || data?.standalone === false) {
       return '/oam-auth'
     }
   } catch {
-    /* standalone or status unavailable — fall through to product API */
+    /* standalone or status unavailable — fall through */
   }
+  try {
+    await axios.get('/oam-auth/api/auth/status')
+    return '/oam-auth'
+  } catch {
+    /* bridge absent */
+  }
+  if (OAM_URL) return OAM_URL
   return API_URL
 }
 

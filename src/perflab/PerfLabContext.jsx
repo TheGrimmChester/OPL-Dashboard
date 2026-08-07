@@ -142,7 +142,7 @@ export function PerfLabProvider({ children }) {
   const engineLabel = scenarios.data?.engine || engine
   const runnerLabel = scenarios.data?.runner || 'docker'
 
-  const { organizationId, projectId } = useTenant()
+  const { organizationId, projectId, hasConcreteProject } = useTenant()
   const scopeLabel = `${organizationId} / ${projectId}`
   const reportTemplates = useReportTemplates('report')
   const trendTemplates = useReportTemplates('trend')
@@ -579,6 +579,10 @@ export function PerfLabProvider({ children }) {
   }
 
   const saveScenario = async () => {
+    if (!hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only.')
+      return
+    }
     setBusy(true)
     try {
       const firstHttp = form.steps.find((s) => !s.type || s.type === 'http') || {}
@@ -707,6 +711,10 @@ export function PerfLabProvider({ children }) {
   }
 
   const startRun = async (scenarioId) => {
+    if (!hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only.')
+      return
+    }
     const sid = scenarioId || selectedId
     if (!sid) { flash('warn', 'Save or select a scenario first'); return }
     setBusy(true)
@@ -805,7 +813,7 @@ export function PerfLabProvider({ children }) {
     scenarios, runs, baselines, federationPeers,
     scnRows, runRows, baseRows, peerRows, hasFederationPeers,
     showArchived, setShowArchived,
-    engineLabel, runnerLabel, scopeLabel,
+    engineLabel, runnerLabel, scopeLabel, hasConcreteProject,
 
     // scenario form
     form, setForm, selectedId, setSelectedId,

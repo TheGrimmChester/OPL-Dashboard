@@ -1,77 +1,103 @@
-import React, { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import axios from 'axios'
+import { projectScopeHeaders } from '@open-family/ui'
 
+import { apiUrl } from '../utils/apiBase'
 import {
   isPersonalAccount, lockedOrgId, readAccountType,
 } from '../utils/accountType'
+import {
+  ALL,
+  isMutatingMethod,
+  isProjectDirectoryRequest,
+  persistProjectSelection,
+  projectIdFromSelection,
+  readProjectSelection,
+  tenantScopeKey,
+} from '../utils/projectScope'
 
-const ALL = 'all'
-const DEFAULT_ORG = 'default-org'
-const DEFAULT_PROJECT = 'default-project'
+const SELECTION_KEY = 'project_selection'
+const PROJECT_KEY = 'project_id'
 
-// Co-deployed NAS / AUTH_REQUIRED=1 strips picker "all" and scopes lists to the
-// write tenant (default-org / default-project). Default the slim OPL picker to
-// that pair so Perf Lab is not empty until the user opens OPA and picks a tenant.
-const MIGRATED_KEY = 'opl_tenant_default_org_v1'
+export { ALL }
+
+// One-time migration: "default-org"/"default-project" used to BE the
+// "nothing selected" sentinel. Reset that exact pair to UI All — once.
+const MIGRATED_KEY = 'opl_tenant_default_to_all_v1'
 if (!localStorage.getItem(MIGRATED_KEY)) {
   const storedOrg = localStorage.getItem('organization_id')
-  const storedProj = localStorage.getItem('project_id')
-  if (!storedOrg || storedOrg === ALL) {
-    localStorage.setItem('organization_id', DEFAULT_ORG)
-  }
-  if (!storedProj || storedProj === ALL) {
-    localStorage.setItem('project_id', DEFAULT_PROJECT)
+  const storedProj = localStorage.getItem(PROJECT_KEY)
+  if ((!storedOrg || storedOrg === 'default-org') && (!storedProj || storedProj === 'default-project')) {
+    localStorage.setItem('organization_id', ALL)
+    persistProjectSelection(SELECTION_KEY, PROJECT_KEY, ALL)
+  } else if (storedProj && storedProj !== ALL && storedProj !== 'default-project' && !localStorage.getItem(SELECTION_KEY)) {
+    persistProjectSelection(SELECTION_KEY, PROJECT_KEY, [storedProj])
   }
   localStorage.setItem(MIGRATED_KEY, '1')
 }
 
-const tenantHeaders = {
-  organizationId: localStorage.getItem('organization_id') || DEFAULT_ORG,
-  projectId: localStorage.getItem('project_id') || DEFAULT_PROJECT,
+function initialOrganizationId(accountType) {
+  const locked = lockedOrgId()
+  if (locked) return locked
+  if (isPersonalAccount(accountType)) return ''
+  return localStorage.getItem('organization_id') || ALL
 }
 
-// Every scoped list on the API keys off these two headers. The switcher in the
-// top bar changes their values; it never stops sending them.
-axios.interceptors.request.use((config) => {
-  if (isPersonalAccount()) {
-    if (tenantHeaders.projectId) config.headers['X-Project-ID'] = tenantHeaders.projectId
-    return config
+const tenantHeaders = {
+  organizationId: initialOrganizationId(readAccountType()),
+  selection: readProjectSelection(SELECTION_KEY, PROJECT_KEY),
+  enabledProjectIds: [],
+}
+
+function stampTenant(config) {
+  config.headers = config.headers || {}
+  delete config.headers['X-Project-ID']
+  delete config.headers['X-Project-IDs']
+  delete config.headers['X-Organization-ID']
+
+  if (!isPersonalAccount()) {
+    const org = lockedOrgId() || tenantHeaders.organizationId
+    if (org) config.headers['X-Organization-ID'] = org
   }
-  const org = lockedOrgId() || tenantHeaders.organizationId
-  if (org) config.headers['X-Organization-ID'] = org
-  if (tenantHeaders.projectId) config.headers['X-Project-ID'] = tenantHeaders.projectId
+
+  const url = config.url || ''
+  if (isProjectDirectoryRequest(url)) return
+
+  if (isMutatingMethod(config.method)) {
+    if (
+      tenantHeaders.selection !== ALL
+      && Array.isArray(tenantHeaders.selection)
+      && tenantHeaders.selection.length === 1
+    ) {
+      config.headers['X-Project-ID'] = tenantHeaders.selection[0]
+    }
+    return
+  }
+
+  if (
+    tenantHeaders.selection === ALL
+    && (!tenantHeaders.enabledProjectIds || tenantHeaders.enabledProjectIds.length === 0)
+  ) {
+    return
+  }
+
+  Object.assign(
+    config.headers,
+    projectScopeHeaders(tenantHeaders.selection, tenantHeaders.enabledProjectIds),
+  )
+}
+
+axios.interceptors.request.use((config) => {
+  stampTenant(config)
   return config
 })
 
-// OPL-API exposes no organisation or project directory — the authoritative
-// picker lives in OPA when the stack is co-deployed. So the switcher offers the
-// default pair plus whatever scope the operator has actually used here, which is
-// remembered locally. It is a shortcut list, never a claim of completeness.
-const KNOWN_KEY = 'opl_known_scopes'
-
-function readKnown(kind, current) {
-  let stored = []
-  try {
-    const raw = JSON.parse(localStorage.getItem(KNOWN_KEY) || '{}')
-    if (Array.isArray(raw[kind])) stored = raw[kind].filter((v) => typeof v === 'string' && v)
-  } catch {
-    /* corrupt entry — fall back to the defaults below */
-  }
-  const seed = kind === 'organizations' ? DEFAULT_ORG : DEFAULT_PROJECT
-  return [...new Set([seed, current, ...stored])].filter(Boolean)
+function projectRowId(p) {
+  return String(p.project_id || p.id || '')
 }
 
-function remember(kind, value) {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KNOWN_KEY) || '{}')
-    const list = Array.isArray(raw[kind]) ? raw[kind] : []
-    localStorage.setItem(KNOWN_KEY, JSON.stringify({
-      ...raw,
-      [kind]: [...new Set([...list, value])].filter(Boolean).slice(-12),
-    }))
-  } catch {
-    /* storage unavailable — the header still changed for this session */
-  }
+function orgRowId(o) {
+  return String(o.org_id || o.id || '')
 }
 
 const TenantContext = createContext()
@@ -84,61 +110,127 @@ export const useTenant = () => {
   return context
 }
 
-/** Headers-only tenant provider, plus the shortcut list the top-bar switcher shows. */
+/** OAM directory-backed tenant provider for the Perf Lab switcher. */
 export const TenantProvider = ({ children }) => {
   const [accountType] = useState(() => readAccountType())
   const orgLocked = !!lockedOrgId()
-  const [organizationId, setOrganizationId] = useState(() => {
-    const locked = lockedOrgId()
-    if (locked) return locked
-    if (isPersonalAccount(accountType)) return DEFAULT_ORG
-    return localStorage.getItem('organization_id') || DEFAULT_ORG
-  })
-  const [projectId, setProjectId] = useState(
-    () => localStorage.getItem('project_id') || DEFAULT_PROJECT,
-  )
-  const [organizations, setOrganizations] = useState(
-    () => readKnown('organizations', localStorage.getItem('organization_id') || DEFAULT_ORG),
-  )
-  const [projects, setProjects] = useState(
-    () => readKnown('projects', localStorage.getItem('project_id') || DEFAULT_PROJECT),
+  const [organizationId, setOrganizationIdState] = useState(() => initialOrganizationId(accountType))
+  const [selection, setSelectionState] = useState(() => readProjectSelection(SELECTION_KEY, PROJECT_KEY))
+  const [organizations, setOrganizations] = useState([])
+  const [projects, setProjects] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const projectId = projectIdFromSelection(selection)
+  const scopeKey = useMemo(
+    () => tenantScopeKey(organizationId, selection),
+    [organizationId, selection],
   )
 
-  const setOrg = (id) => {
+  useEffect(() => {
+    let active = true
+    if (isPersonalAccount(accountType)) {
+      setOrganizations([])
+      return () => { active = false }
+    }
+    setLoading(true)
+    const token = localStorage.getItem('auth_token')
+    axios.get(apiUrl('/api/hub/organizations'), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => {
+        if (!active) return
+        setOrganizations(r.data?.organizations || [])
+      })
+      .catch(() => {
+        if (active) setOrganizations([])
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
+  }, [accountType])
+
+  useEffect(() => {
+    let active = true
+    const token = localStorage.getItem('auth_token')
+    const personal = isPersonalAccount(accountType)
+    const params = new URLSearchParams({ product: 'opl' })
+    // Personal (incl. lab admin): omit org filter — OAM org lists exclude personal imports.
+    if (!personal && organizationId && organizationId !== ALL) {
+      params.set('organization_id', organizationId)
+    }
+    axios.get(apiUrl(`/api/oam/projects?${params}`), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => {
+        if (!active) return
+        const list = r.data?.projects || []
+        setProjects(list)
+        const ids = list.map(projectRowId).filter(Boolean)
+        tenantHeaders.enabledProjectIds = ids
+        if (tenantHeaders.selection !== ALL && Array.isArray(tenantHeaders.selection)) {
+          const allowed = new Set(ids)
+          const next = tenantHeaders.selection.filter((id) => allowed.has(id))
+          if (next.length !== tenantHeaders.selection.length) {
+            const saved = persistProjectSelection(SELECTION_KEY, PROJECT_KEY, next.length ? next : ALL)
+            tenantHeaders.selection = saved
+            setSelectionState(saved)
+          }
+        }
+      })
+      .catch(() => {
+        if (!active) return
+        setProjects([])
+        tenantHeaders.enabledProjectIds = []
+      })
+    return () => { active = false }
+  }, [organizationId, accountType])
+
+  const setOrganizationId = useCallback((id) => {
     if (orgLocked || isPersonalAccount(accountType)) return
-    const v = id || DEFAULT_ORG
+    const v = id || ALL
     localStorage.setItem('organization_id', v)
     tenantHeaders.organizationId = v
-    remember('organizations', v)
-    setOrganizations((list) => [...new Set([...list, v])])
-    setOrganizationId(v)
-  }
-  const setProj = (id) => {
-    const v = id || DEFAULT_PROJECT
-    localStorage.setItem('project_id', v)
-    tenantHeaders.projectId = v
-    remember('projects', v)
-    setProjects((list) => [...new Set([...list, v])])
-    setProjectId(v)
-  }
+    setOrganizationIdState(v)
+    const saved = persistProjectSelection(SELECTION_KEY, PROJECT_KEY, ALL)
+    tenantHeaders.selection = saved
+    setSelectionState(saved)
+  }, [accountType, orgLocked])
 
-  return (
-    <TenantContext.Provider value={{
-      organizationId,
-      projectId,
-      setOrganizationId: setOrg,
-      setProjectId: setProj,
-      organizations,
-      projects,
-      defaultOrganizationId: DEFAULT_ORG,
-      defaultProjectId: DEFAULT_PROJECT,
-      loading: false,
-      accountType,
-      isPersonalAccount: isPersonalAccount(accountType),
-      orgLocked,
-    }}
-    >
-      {children}
-    </TenantContext.Provider>
-  )
+  const setProjectSelection = useCallback((next) => {
+    const saved = persistProjectSelection(SELECTION_KEY, PROJECT_KEY, next)
+    tenantHeaders.selection = saved
+    setSelectionState(saved)
+  }, [])
+
+  const setProjectId = useCallback((id) => {
+    setProjectSelection(!id || id === ALL ? ALL : [String(id)])
+  }, [setProjectSelection])
+
+  tenantHeaders.organizationId = organizationId
+  tenantHeaders.selection = selection
+
+  const value = useMemo(() => ({
+    organizationId,
+    projectId,
+    selection,
+    scopeKey,
+    setProjectSelection,
+    setOrganizationId,
+    setProjectId,
+    organizations,
+    projects,
+    loading,
+    accountType,
+    isPersonalAccount: isPersonalAccount(accountType),
+    orgLocked,
+    hasConcreteProject: selection !== ALL && selection.length === 1,
+    orgRowId,
+    projectRowId,
+  }), [
+    organizationId, projectId, selection, scopeKey, setProjectSelection, setOrganizationId, setProjectId,
+    organizations, projects, loading, accountType, orgLocked,
+  ])
+
+  return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>
 }

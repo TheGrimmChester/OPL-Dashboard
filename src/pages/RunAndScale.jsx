@@ -9,6 +9,7 @@ import { usePerfLab } from '../perflab/PerfLabContext'
 import LoadCurveEditor from '../components/LoadCurveEditor'
 import NotifyChannels from '../components/NotifyChannels'
 import ScenarioTable from '../components/ScenarioTable'
+import ProjectWriteBanner from '../components/ProjectWriteBanner'
 import { RunStatusBadge } from '../components/RunsTable'
 import { tableState } from '../components/tableState'
 import { fmtAgo, fmtNum } from '../theme/format'
@@ -107,7 +108,7 @@ function ScenarioHistory() {
  */
 export default function RunAndScale() {
   const {
-    form, setForm, selectedId, busy, scopeLabel, engineLabel, runnerLabel,
+    form, setForm, selectedId, busy, scopeLabel, engineLabel, runnerLabel, hasConcreteProject,
     preset, applyPreset, apiPolicies,
     dispatch, setDispatch, engine, setEngine, policy, setPolicy, profile, setProfile,
     workers, setWorkers, fanout, setFanout, hasFederationPeers, peerRows,
@@ -130,13 +131,15 @@ export default function RunAndScale() {
         ]}
         actions={(
           <>
-            <Button icon={<FiCheck />} disabled={busy || !selectedId} onClick={validateScenario}>Validate</Button>
-            <Button variant="primary" icon={<FiPlay />} disabled={busy || !selectedId} onClick={() => startRun()}>
+            <Button icon={<FiCheck />} disabled={busy || !selectedId || !hasConcreteProject} onClick={validateScenario}>Validate</Button>
+            <Button variant="primary" icon={<FiPlay />} disabled={busy || !selectedId || !hasConcreteProject} onClick={() => startRun()}>
               Start run
             </Button>
           </>
         )}
       />
+
+      <ProjectWriteBanner hasConcreteProject={hasConcreteProject} />
 
       {!selectedId && (
         <Banner tone="accent" title="No scenario selected">

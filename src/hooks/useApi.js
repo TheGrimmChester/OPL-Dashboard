@@ -20,7 +20,7 @@ export function formatApiError(e) {
 /** Fetch JSON from the OPL API; merges global time range unless opts.noRange. */
 export function useApi(path, params = {}, opts = {}) {
   const { from, to, interval, tick } = useTimeRange()
-  const { organizationId, projectId } = useTenant()
+  const { scopeKey } = useTenant()
   const [state, setState] = useState({ data: null, loading: true, error: null })
   const paramsKey = JSON.stringify(params)
   const skip = opts.skip
@@ -37,7 +37,7 @@ export function useApi(path, params = {}, opts = {}) {
       setState({ data: null, loading: false, error: formatApiError(e) })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, paramsKey, from, to, interval, skip, opts.noRange, organizationId, projectId])
+  }, [path, paramsKey, from, to, interval, skip, opts.noRange, scopeKey])
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -49,7 +49,7 @@ export function useApi(path, params = {}, opts = {}) {
 }
 
 export function usePolling(path, intervalMs, params = {}, opts = {}) {
-  const { organizationId, projectId } = useTenant()
+  const { scopeKey } = useTenant()
   const [state, setState] = useState({ data: null, loading: true, error: null })
   const ref = useRef()
   const paramsKey = JSON.stringify(params)
@@ -67,6 +67,6 @@ export function usePolling(path, intervalMs, params = {}, opts = {}) {
     if (!opts.paused) ref.current = setInterval(fetchOnce, intervalMs)
     return () => { alive = false; clearInterval(ref.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, paramsKey, intervalMs, opts.paused, organizationId, projectId])
+  }, [path, paramsKey, intervalMs, opts.paused, scopeKey])
   return state
 }
