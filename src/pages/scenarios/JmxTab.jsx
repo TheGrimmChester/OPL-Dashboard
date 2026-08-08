@@ -8,7 +8,7 @@ import { usePerfLab } from '../../perflab/PerfLabContext'
  * Prefer Steps and Capture; this view exists for a plan that already exists.
  */
 export default function JmxTab() {
-  const { form, setForm, busy, selectedId, importJmxFile, downloadJmx, saveScenario } = usePerfLab()
+  const { form, setForm, busy, selectedId, importJmxFile, downloadJmx, saveScenario, hasConcreteProject } = usePerfLab()
 
   return (
     <Stack gap="sections">
@@ -26,6 +26,7 @@ export default function JmxTab() {
             />
             <Button
               icon={<FiUpload />}
+              disabled={busy || !hasConcreteProject}
               onClick={() => document.getElementById('opl-import-jmx')?.click()}
             >
               Import .jmx
@@ -36,7 +37,7 @@ export default function JmxTab() {
           </>
         )}
         footer={(
-          <Button variant="primary" icon={<FiSave />} disabled={busy} onClick={saveScenario}>
+          <Button variant="primary" icon={<FiSave />} disabled={busy || !hasConcreteProject} onClick={saveScenario}>
             Save JMX
           </Button>
         )}

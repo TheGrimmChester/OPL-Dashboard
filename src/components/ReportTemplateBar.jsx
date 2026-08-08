@@ -5,6 +5,7 @@ import {
   Badge, Button, Code, DefinitionList, Field, Input, Select, Stack,
 } from '@open-family/ui'
 import { apiUrl } from '../utils/apiBase'
+import { useTenant } from '../contexts/TenantContext'
 
 // Saved report / trend layouts: which widgets, which metrics, which window.
 // A template only selects what an export renders — never how a run was measured.
@@ -35,6 +36,7 @@ export function widgetLabel(w) {
 // useReportTemplates loads the saved layouts for one kind, scoped by the tenant
 // headers the axios defaults already carry.
 export function useReportTemplates(kind) {
+  const { scopeKey } = useTenant()
   const [templates, setTemplates] = useState([])
   // Start "loading" so a selection restored from elsewhere is not dropped before
   // the first fetch resolves; reload() re-raises it synchronously for the same
@@ -63,7 +65,7 @@ export function useReportTemplates(kind) {
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [kind, reloadKey])
+  }, [kind, reloadKey, scopeKey])
 
   return { templates, loading, error, reload }
 }
@@ -96,6 +98,7 @@ function emptyDraft(kind) {
 // TemplateEditor doubles as the manage list: saved layouts on the left, form on
 // the right. Save/delete are admin-only on the API and surface plain errors.
 function TemplateEditor({ kind, templates, initial, onClose, onSaved, onError }) {
+  const { hasConcreteProject } = useTenant()
   const [draft, setDraft] = useState(initial || emptyDraft(kind))
   const [busy, setBusy] = useState(false)
   const widgets = widgetsForKind(draft.kind)
@@ -115,6 +118,10 @@ function TemplateEditor({ kind, templates, initial, onClose, onSaved, onError })
   }
 
   const save = async () => {
+    if (!hasConcreteProject) {
+      onError('Select one project to save templates')
+      return
+    }
     if (!draft.name.trim()) {
       onError('Name is required')
       return
@@ -143,6 +150,10 @@ function TemplateEditor({ kind, templates, initial, onClose, onSaved, onError })
 
   const remove = async () => {
     if (!draft.id) return
+    if (!hasConcreteProject) {
+      onError('Select one project to delete templates')
+      return
+    }
     setBusy(true)
     try {
       await axios.delete(apiUrl(`/api/perf/report-templates/${encodeURIComponent(draft.id)}`))
@@ -295,11 +306,11 @@ function TemplateEditor({ kind, templates, initial, onClose, onSaved, onError })
               </p>
 
               <div className="oui-row">
-                <Button variant="primary" icon={<FiCheck />} disabled={busy} onClick={save}>
+                <Button variant="primary" icon={<FiCheck />} disabled={busy || !hasConcreteProject} onClick={save}>
                   Save template
                 </Button>
                 {draft.id && (
-                  <Button variant="danger" icon={<FiTrash2 />} disabled={busy} onClick={remove}>
+                  <Button variant="danger" icon={<FiTrash2 />} disabled={busy || !hasConcreteProject} onClick={remove}>
                     Delete
                   </Button>
                 )}
@@ -359,6 +370,7 @@ export function AppliedTemplate({ template, scopeLabel, note }) {
 export default function ReportTemplateBar({
   kind, label, templates, selectedId, onSelect, onChanged, onError,
 }) {
+  const { hasConcreteProject } = useTenant()
   const [editing, setEditing] = useState(null) // null | {} | template
   const selected = useMemo(
     () => templates.find((t) => t.id === selectedId) || null,
@@ -383,10 +395,11 @@ export default function ReportTemplateBar({
         value={selectedId || ''}
         onChange={(e) => onSelect(e.target.value)}
       />
-      <Button size="sm" onClick={() => setEditing(emptyDraft(kind))}>Save as…</Button>
+      <Button size="sm" disabled={!hasConcreteProject} onClick={() => setEditing(emptyDraft(kind))}>Save as…</Button>
       <Button
         size="sm"
         variant="ghost"
+        disabled={!hasConcreteProject}
         onClick={() => setEditing(selected ? {
           id: selected.id,
           name: selected.name,

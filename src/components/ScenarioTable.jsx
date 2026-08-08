@@ -17,7 +17,7 @@ import { tableState } from './tableState'
 export default function ScenarioTable({ title = 'Scenarios', density = 'comfortable', onDensity }) {
   const navigate = useNavigate()
   const {
-    scenarios, scnRows, showArchived, setShowArchived, busy,
+    scenarios, scnRows, showArchived, setShowArchived, busy, hasConcreteProject,
     loadScenario, startRun, duplicateScenario, archiveScenario, unarchiveScenario,
   } = usePerfLab()
 
@@ -32,16 +32,18 @@ export default function ScenarioTable({ title = 'Scenarios', density = 'comforta
     { key: 'jmx_bytes', header: 'JMX', numeric: true, render: (r) => fmtNum(r.jmx_bytes || 0) },
   ]
 
+  const writeDisabled = busy || !hasConcreteProject
+
   const rowActions = (r) => (showArchived
     ? [
-      { label: 'Restore', icon: <FiRotateCcw />, disabled: busy, onSelect: () => unarchiveScenario(r.id) },
+      { label: 'Restore', icon: <FiRotateCcw />, disabled: writeDisabled, onSelect: () => unarchiveScenario(r.id) },
     ]
     : [
       { label: 'Open in the designer', icon: <FiPlus />, disabled: busy, onSelect: () => loadScenario(r.id) },
-      { label: 'Start a run', icon: <FiPlay />, disabled: busy, onSelect: () => startRun(r.id) },
-      { label: 'Duplicate', icon: <FiCopy />, disabled: busy, onSelect: () => duplicateScenario(r.id) },
+      { label: 'Start a run', icon: <FiPlay />, disabled: writeDisabled, onSelect: () => startRun(r.id) },
+      { label: 'Duplicate', icon: <FiCopy />, disabled: writeDisabled, onSelect: () => duplicateScenario(r.id) },
       { separator: true },
-      { label: 'Archive', icon: <FiTrash2 />, danger: true, disabled: busy, onSelect: () => archiveScenario(r.id) },
+      { label: 'Archive', icon: <FiTrash2 />, danger: true, disabled: writeDisabled, onSelect: () => archiveScenario(r.id) },
     ])
 
   return (
@@ -70,7 +72,9 @@ export default function ScenarioTable({ title = 'Scenarios', density = 'comforta
         columns={columns}
         rows={scnRows}
         getRowKey={(r) => r.id}
-        onRowClick={(r) => (showArchived ? unarchiveScenario(r.id) : loadScenario(r.id))}
+        onRowClick={(r) => (showArchived
+          ? (hasConcreteProject ? unarchiveScenario(r.id) : undefined)
+          : loadScenario(r.id))}
         rowActions={rowActions}
         emptyState={(
           <EmptyState

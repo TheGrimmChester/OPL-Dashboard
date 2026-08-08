@@ -5,6 +5,7 @@ import {
   Banner, Button, Card, Code, EmptyState, Stack, Table, TableCaption,
 } from '@open-family/ui'
 import { apiUrl } from '../utils/apiBase'
+import { useTenant } from '../contexts/TenantContext'
 import { fmtAgo, fmtNum } from '../theme/format'
 import { tableState } from './tableState'
 
@@ -100,6 +101,7 @@ function ChannelCard({ channel, active, onToggle }) {
 }
 
 export default function NotifyChannels({ runNotify, runId, onError }) {
+  const { scopeKey } = useTenant()
   const [history, setHistory] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -133,7 +135,7 @@ export default function NotifyChannels({ runNotify, runId, onError }) {
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [runId, reloadKey])
+  }, [runId, reloadKey, scopeKey])
 
   const rows = useMemo(() => {
     const all = Array.isArray(history?.notifications) ? history.notifications : []
