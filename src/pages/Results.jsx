@@ -10,7 +10,7 @@ import { fmtNum } from '../theme/format'
  * run's detail now lives at `/results/:runId`, so it is linkable.
  */
 export default function Results() {
-  const { runRows, importJtlFile, busy, scopeLabel } = usePerfLab()
+  const { runRows, importJtlFile, busy, scopeLabel, hasConcreteProject } = usePerfLab()
 
   return (
     <Stack gap="sections">
@@ -32,7 +32,7 @@ export default function Results() {
             />
             <Button
               icon={<FiUpload />}
-              disabled={busy}
+              disabled={busy || !hasConcreteProject}
               onClick={() => document.getElementById('opl-import-jtl')?.click()}
             >
               Import JTL

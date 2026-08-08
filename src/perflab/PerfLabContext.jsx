@@ -143,7 +143,7 @@ export function PerfLabProvider({ children }) {
   const engineLabel = scenarios.data?.engine || engine
   const runnerLabel = scenarios.data?.runner || 'docker'
 
-  const { organizationId, projectId, hasConcreteProject } = useTenant()
+  const { organizationId, projectId, hasConcreteProject, scopeKey } = useTenant()
   const scopeLabel = `${organizationId} / ${projectId}`
   const reportTemplates = useReportTemplates('report')
   const trendTemplates = useReportTemplates('trend')
@@ -225,7 +225,7 @@ export function PerfLabProvider({ children }) {
       })
       .finally(() => { if (!cancelled) setTrendLoading(false) })
     return () => { cancelled = true }
-  }, [onTrends, selectedId, form.sla?.p95_ms, runs.data, trendTemplateId])
+  }, [onTrends, selectedId, form.sla?.p95_ms, runs.data, trendTemplateId, scopeKey])
 
   const flash = useCallback((tone, title, detail) => {
     setBanner({ tone, title, detail })
@@ -382,6 +382,10 @@ export function PerfLabProvider({ children }) {
   }, [restored])
 
   const archiveScenario = async (id) => {
+    if (!hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only.')
+      return
+    }
     const sid = id || selectedId
     if (!sid) return
     if (!window.confirm('Archive this scenario? It will disappear from the list (soft-delete).')) return
@@ -399,6 +403,10 @@ export function PerfLabProvider({ children }) {
   }
 
   const unarchiveScenario = async (id) => {
+    if (!hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only.')
+      return
+    }
     const sid = id || selectedId
     if (!sid) return
     setBusy(true)
@@ -441,6 +449,10 @@ export function PerfLabProvider({ children }) {
 
   const importJtlFile = async (file) => {
     if (!file) return
+    if (!hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only.')
+      return
+    }
     setBusy(true)
     try {
       const fd = new FormData()
@@ -463,6 +475,10 @@ export function PerfLabProvider({ children }) {
   }
 
   const duplicateScenario = async (id) => {
+    if (!hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only.')
+      return
+    }
     const sid = id || selectedId
     if (!sid) return
     setBusy(true)
@@ -486,6 +502,10 @@ export function PerfLabProvider({ children }) {
   }
 
   const saveSchedule = async () => {
+    if (!hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only.')
+      return
+    }
     if (!selectedId) {
       flash('error', 'Select a scenario', 'Save the scenario first, then patch schedule.')
       return
@@ -730,6 +750,10 @@ export function PerfLabProvider({ children }) {
   }
 
   const validateScenario = async () => {
+    if (!hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only.')
+      return
+    }
     if (!selectedId) { flash('warn', 'Save the scenario first'); return }
     setBusy(true)
     try {

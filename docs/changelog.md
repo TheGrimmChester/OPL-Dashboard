@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix: Lists and writes refetch/gate on the family project switcher (`scopeKey` / concrete project) so All-projects does not leave stale tenant data or allow unscoped mutations.
+
 ### Scenario inspector and guided VU tree
 
 - Step inspector: Basics always visible; Advanced disclosure for every supported JMeter

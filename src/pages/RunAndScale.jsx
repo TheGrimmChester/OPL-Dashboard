@@ -301,14 +301,14 @@ export default function RunAndScale() {
           </p>
 
           <div className="oui-row">
-            <Button variant="primary" icon={<FiPlay />} disabled={busy || !selectedId} onClick={() => startRun()}>
+            <Button variant="primary" icon={<FiPlay />} disabled={busy || !selectedId || !hasConcreteProject} onClick={() => startRun()}>
               Start run
             </Button>
-            <Button icon={<FiCopy />} disabled={busy || !selectedId} onClick={() => duplicateScenario()}>
+            <Button icon={<FiCopy />} disabled={busy || !selectedId || !hasConcreteProject} onClick={() => duplicateScenario()}>
               Duplicate scenario
             </Button>
             <span className="oui-spacer" />
-            <Button variant="danger" icon={<FiTrash2 />} disabled={busy || !selectedId} onClick={() => archiveScenario()}>
+            <Button variant="danger" icon={<FiTrash2 />} disabled={busy || !selectedId || !hasConcreteProject} onClick={() => archiveScenario()}>
               Archive scenario
             </Button>
           </div>
