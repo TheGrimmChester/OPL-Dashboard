@@ -13,6 +13,11 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
+      '/oam-auth': {
+        target: process.env.VITE_OAM_PROXY_TARGET || 'http://127.0.0.1:8090',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/oam-auth/, ''),
+      },
       '/api': {
         target: process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8092',
         changeOrigin: true,

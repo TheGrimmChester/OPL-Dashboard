@@ -134,7 +134,7 @@ export const TenantProvider = ({ children }) => {
     }
     setLoading(true)
     const token = localStorage.getItem('auth_token')
-    axios.get(apiUrl('/api/hub/organizations'), {
+    axios.get(apiUrl('/api/oam/organizations'), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((r) => {
