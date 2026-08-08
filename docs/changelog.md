@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix: Lists and writes refetch/gate on the family project switcher (`scopeKey` / concrete project) so All-projects does not leave stale tenant data or allow unscoped mutations.
 ### The family design system
 
 - Adopted `@open-family/ui`: the shared shell, tokens and component set. Deleted the local
