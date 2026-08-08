@@ -13,7 +13,6 @@ export const EXPRESSION_SNIPPETS = [
   { insert: '${__jexl3("${status}"=="200")}', label: 'Compare status var', group: 'Expressions' },
   { insert: '${__P(LOAD_RUN_ID,)}', label: 'Property: run id', group: 'Expressions' },
   { insert: '${__P(OPA_THREADS,1)}', label: 'Property: thread count', group: 'Expressions' },
-  { insert: '${__UUID}', label: 'UUID sample', group: 'Expressions' },
 ]
 
 /**

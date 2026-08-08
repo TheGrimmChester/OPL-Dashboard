@@ -12,7 +12,7 @@ import {
   matchesFilter,
   nodeMatchesFilter,
 } from '../src/perflab/treeOps.js'
-import { mentionsPrivateHosts } from '../src/perflab/captureHints.js'
+import { mentionsPrivateHosts, skipTallyFrom } from '../src/perflab/captureHints.js'
 
 describe('header rows ↔ object', () => {
   it('round-trips object headers through editable rows', () => {
@@ -137,5 +137,18 @@ describe('capture private-host hint', () => {
     expect(mentionsPrivateHosts('skipped blocked URL http://192.168.100.101/ (private/link-local address not allowed)')).toBe(true)
     expect(mentionsPrivateHosts('no HTTP requests found')).toBe(false)
     expect(mentionsPrivateHosts('set OPA_PERF_INTERNAL_HOSTS')).toBe(true)
+    expect(mentionsPrivateHosts('skipped static=2 private=5 OPTIONS=0 blocked=0 empty=0')).toBe(true)
+  })
+})
+
+describe('skipTallyFrom', () => {
+  it('sums drop fields and ignores private= kept tallies', () => {
+    const warn = ['skipped static=3 private=7 OPTIONS=1 blocked=2 empty=0']
+    expect(skipTallyFrom({}, warn)).toBe(6)
+  })
+
+  it('honours legacy skipped N and preview.skipped', () => {
+    expect(skipTallyFrom({}, ['skipped 4 static assets'])).toBe(4)
+    expect(skipTallyFrom({ skipped: 9 }, ['skipped static=1 private=9'])).toBe(9)
   })
 })

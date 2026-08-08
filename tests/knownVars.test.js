@@ -38,7 +38,7 @@ describe('buildAutocompleteCatalog', () => {
     for (const snip of EXPRESSION_SNIPPETS) {
       expect(items.some((i) => i.insert === snip.insert)).toBe(true)
     }
-    expect(items.some((i) => /__Random|__time/.test(i.insert))).toBe(false)
+    expect(items.some((i) => /__Random|__time|__UUID/.test(i.insert))).toBe(false)
   })
 
   it('bind mode inserts bare names without snippets', () => {

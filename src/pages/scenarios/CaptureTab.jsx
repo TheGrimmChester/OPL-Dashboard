@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { FiDownload, FiUpload } from 'react-icons/fi'
 import {
   Banner, Button, Card, Code, EmptyState, Field, Select, Stack, Table, TableCaption,
@@ -45,7 +45,13 @@ export default function CaptureTab() {
     captureIncludeStatic, setCaptureIncludeStatic,
     capturePreview, captureImportError, applyCapturePreview,
     importCaptureFile, downloadCapture, selectedId,
+    hasConcreteProject,
   } = usePerfLab()
+
+  // Persist uses WriteTenant — force dry-run when All projects / multi-select.
+  useEffect(() => {
+    if (!hasConcreteProject && !captureDryRun) setCaptureDryRun(true)
+  }, [hasConcreteProject, captureDryRun, setCaptureDryRun])
 
   const previewSteps = (capturePreview?.steps || capturePreview?.scenario?.steps || []).slice(0, 50)
   const warnings = asWarningList(capturePreview?.warnings)
@@ -60,6 +66,12 @@ export default function CaptureTab() {
   const count = Number(capturePreview?.count || previewSteps.length) || 0
   const emptySuccess = Boolean(capturePreview) && count === 0
   const showPrivateHint = mentionsPrivateHosts(errorText, ...warnings)
+  const modeOptions = hasConcreteProject
+    ? [
+        { value: 'dry', label: 'Dry-run preview' },
+        { value: 'save', label: 'Persist as a scenario' },
+      ]
+    : [{ value: 'dry', label: 'Dry-run preview (select one project to persist)' }]
 
   return (
     <Stack gap="sections">
@@ -69,15 +81,23 @@ export default function CaptureTab() {
       >
         <Stack>
           <div className="opl-field-grid">
-            <Field label="Mode" hint="A dry run never writes a scenario.">
+            <Field
+              label="Mode"
+              hint={hasConcreteProject
+                ? 'A dry run never writes a scenario.'
+                : 'All projects is list-only — persist needs one project selected.'}
+            >
               <Select
                 aria-label="Import mode"
-                options={[
-                  { value: 'dry', label: 'Dry-run preview' },
-                  { value: 'save', label: 'Persist as a scenario' },
-                ]}
-                value={captureDryRun ? 'dry' : 'save'}
-                onChange={(e) => setCaptureDryRun(e.target.value === 'dry')}
+                options={modeOptions}
+                value={captureDryRun || !hasConcreteProject ? 'dry' : 'save'}
+                onChange={(e) => {
+                  if (!hasConcreteProject) {
+                    setCaptureDryRun(true)
+                    return
+                  }
+                  setCaptureDryRun(e.target.value === 'dry')
+                }}
               />
             </Field>
             <Field label="Static assets" hint="CSS, JS and images are rarely the journey.">
@@ -129,14 +149,15 @@ export default function CaptureTab() {
 
       {emptySuccess ? (
         <Banner tone="warning" title="No HTTP steps left after import">
-          Every entry was skipped or empty. Check the warnings below — private or metadata hosts are
-          filtered by the URL policy unless allowlisted for validate/run.
+          Every entry was skipped or empty. Check the warnings below — metadata hosts stay blocked;
+          static/OPTIONS/empty URLs are dropped. Lab private hosts are kept when present (see allowlist hint).
         </Banner>
       ) : null}
 
       {skipped > 0 && (
         <Banner tone="warning" title={`${fmtNum(skipped)} entries skipped`}>
-          Static assets, OPTIONS, empty URLs, or blocked hosts were dropped before the journey was built.
+          Static assets, OPTIONS, empty URLs, or blocked metadata hosts were dropped before the journey was built.
+          Lab private hosts are imported with warnings (not counted here).
         </Banner>
       )}
 
@@ -151,11 +172,11 @@ export default function CaptureTab() {
       )}
 
       {showPrivateHint && (
-        <Banner tone="accent" title="Private hosts need an allowlist">
-          Captures against lab or NAS addresses (for example
+        <Banner tone="accent" title="Private hosts need an allowlist to run">
+          Lab or NAS addresses (for example
           {' '}
           <Code>192.168.100.101</Code>
-          ) are skipped by default. For validate and run against those hosts, set
+          ) are imported with warnings. Before validate or run, set
           {' '}
           <Code>OPA_PERF_INTERNAL_HOSTS</Code>
           {' '}
@@ -163,7 +184,7 @@ export default function CaptureTab() {
           {' '}
           <Code>opl-api</Code>
           {' '}
-          (comma-separated hostnames or IPs), then re-import or re-validate.
+          (comma-separated hostnames or IPs). No re-import needed after allowlisting.
         </Banner>
       )}
 
@@ -191,7 +212,7 @@ export default function CaptureTab() {
             <EmptyState
               title={capturePreview ? 'No steps to show' : 'No capture loaded'}
               description={capturePreview
-                ? 'The importer returned zero HTTP steps. Review the warnings above — private hosts are a common cause on NAS captures.'
+                ? 'The importer returned zero HTTP steps. Review the warnings above — metadata blocks or all-static captures are common causes.'
                 : 'Export a HAR from the browser\'s network panel, or an XHR JSON array, and drop it in above. The first fifty steps are shown here.'}
             />
           )}

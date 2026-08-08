@@ -71,6 +71,12 @@ describe('scenario editor contracts', () => {
     expect(src).toContain('!hasConcreteProject')
     expect(src).toContain('ProjectWriteBanner')
     expect(src).toContain('Save scenario')
+    const ctx = read('src/perflab/PerfLabContext.jsx')
+    expect(ctx).toMatch(/importCaptureFile[\s\S]*persist && !hasConcreteProject/)
+    expect(ctx).toMatch(/importJmxFile[\s\S]*!hasConcreteProject/)
+    const capture = read('src/pages/scenarios/CaptureTab.jsx')
+    expect(capture).toContain('hasConcreteProject')
+    expect(capture).toContain('select one project to persist')
   })
 
   it('D12 no connector/repo scope picker in scenario editor', () => {

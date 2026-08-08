@@ -626,6 +626,10 @@ export function PerfLabProvider({ children }) {
 
   const importJmxFile = async (file) => {
     if (!file) return
+    if (!hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only.')
+      return
+    }
     setBusy(true)
     try {
       const text = await file.text()
@@ -648,6 +652,12 @@ export function PerfLabProvider({ children }) {
 
   const importCaptureFile = async (kind, file) => {
     if (!file) return
+    // Persist writes use WriteTenant (default-project collapse) — require concrete project.
+    const persist = !captureDryRun
+    if (persist && !hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only. Use dry-run preview instead.')
+      return
+    }
     setBusy(true)
     setCapturePreview(null)
     setCaptureImportError(null)
@@ -661,9 +671,9 @@ export function PerfLabProvider({ children }) {
       }
       const q = new URLSearchParams()
       q.set('name', file.name.replace(/\.(har|json)$/i, ''))
-      if (captureDryRun) q.set('dry_run', '1')
+      if (!persist) q.set('dry_run', '1')
       if (captureIncludeStatic) q.set('include_static', '1')
-      if (selectedId && !captureDryRun) q.set('id', selectedId)
+      if (selectedId && persist) q.set('id', selectedId)
       let payload
       if (kind === 'har') {
         payload = body.log ? body : { har: body }

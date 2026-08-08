@@ -14,8 +14,11 @@
 - Validation triage: **Open in tree** (uses `path` when present), unbound-variable CTA to Users.
 - Users: Advanced CSVDataSet fields (`stop_thread`, `share_mode`, `quoted`, `ignore_first_line`,
   `encoding`). Scenario / SLA forms expose optional `rps_min`.
-- Capture: surfaces import warnings, skip tallies, and empty results; when private hosts are
-  mentioned, hints to set `OPA_PERF_INTERNAL_HOSTS` on `opl-api` for validate/run against NAS.
+- Capture: surfaces import warnings, skip tallies (static/OPTIONS/blocked/empty — not kept
+  private), and empty results; lab private hosts are imported with warnings and need
+  `OPA_PERF_INTERNAL_HOSTS` on `opl-api` before validate/run (no re-import). Persist import
+  requires a concrete project (same as Save).
+- Expression autocomplete: binders + documented `__jexl3` / `__P(...)` snippets only.
 
 ### The family design system
 
