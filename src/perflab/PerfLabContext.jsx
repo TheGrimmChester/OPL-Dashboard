@@ -8,7 +8,7 @@ import { useApi } from '../hooks/useApi'
 import { apiUrl } from '../utils/apiBase'
 import { useTenant } from '../contexts/TenantContext'
 import { useReportTemplates } from '../components/ReportTemplateBar'
-import { getAtPath, patchStepAt, insertChildAt } from '../components/VuTree'
+import { getAtPath, patchStepAt, insertChildAt } from './treeOps'
 import {
   DEFAULT_FORM, emptyStep, liveKpisFor, parseJSONField, parseSummary,
   STRESS_PRESETS,
@@ -83,6 +83,7 @@ export function PerfLabProvider({ children }) {
   const [captureIncludeStatic, setCaptureIncludeStatic] = useState(false)
   const [captureDryRun, setCaptureDryRun] = useState(true)
   const [capturePreview, setCapturePreview] = useState(null)
+  const [captureImportError, setCaptureImportError] = useState(null)
   const [selectedStepPath, setSelectedStepPath] = useState(null)
   const [treeExpanded, setTreeExpanded] = useState({})
   const [validateResult, setValidateResult] = useState(null)
@@ -338,8 +339,21 @@ export function PerfLabProvider({ children }) {
         vus: Number(data.vus) || 10,
         duration_seconds: Number(data.duration_seconds) || 60,
         steps,
-        datasets: { csv: { inline: '', variableNames: 'user,token', delimiter: ',', recycle: true, ...(datasets.csv || {}) } },
-        sla: { p95_ms: 500, error_rate_max: 0.05, ...sla },
+        datasets: {
+          csv: {
+            inline: '',
+            variableNames: 'user,token',
+            delimiter: ',',
+            recycle: true,
+            stop_thread: false,
+            share_mode: 'shareMode.all',
+            quoted: true,
+            ignore_first_line: false,
+            encoding: 'UTF-8',
+            ...(datasets.csv || {}),
+          },
+        },
+        sla: { p95_ms: 500, error_rate_max: 0.05, rps_min: 0, ...sla },
         schedule: { ramp_seconds: 10, ...schedule },
         jmx_xml: data.jmx_xml || '',
       })
@@ -636,6 +650,7 @@ export function PerfLabProvider({ children }) {
     if (!file) return
     setBusy(true)
     setCapturePreview(null)
+    setCaptureImportError(null)
     try {
       const text = await file.text()
       let body
@@ -666,7 +681,7 @@ export function PerfLabProvider({ children }) {
         setSelectedId(data.id)
         await loadScenario(data.id)
         scenarios.reload?.()
-      } else if (data.steps?.length) {
+      } else if (!captureDryRun && data.steps?.length) {
         setForm((f) => ({
           ...f,
           name: data.scenario?.name || f.name,
@@ -674,9 +689,19 @@ export function PerfLabProvider({ children }) {
         }))
         navigate('/scenarios')
       }
-      flash('ok', `${kind.toUpperCase()} ${captureDryRun ? 'preview' : 'imported'}`, `${data.count || data.steps?.length || 0} steps`)
+      const n = data.count || data.steps?.length || 0
+      const warnN = Array.isArray(data.warnings) ? data.warnings.length : 0
+      flash(
+        n === 0 || warnN > 0 ? 'warn' : 'ok',
+        `${kind.toUpperCase()} ${captureDryRun ? 'preview' : 'imported'}`,
+        n === 0
+          ? (warnN ? `${warnN} warning(s) · no steps` : 'no steps')
+          : `${n} steps${warnN ? ` · ${warnN} warning(s)` : ''}`,
+      )
     } catch (e) {
-      flash('error', `${kind.toUpperCase()} import failed`, e.response?.data || e.message)
+      const detail = e.response?.data || e.message
+      setCaptureImportError(detail)
+      flash('error', `${kind.toUpperCase()} import failed`, detail)
     } finally {
       setBusy(false)
     }
@@ -842,7 +867,7 @@ export function PerfLabProvider({ children }) {
     // capture
     captureDryRun, setCaptureDryRun,
     captureIncludeStatic, setCaptureIncludeStatic,
-    capturePreview, applyCapturePreview,
+    capturePreview, captureImportError, applyCapturePreview,
 
     // templates
     reportTemplates, trendTemplates,

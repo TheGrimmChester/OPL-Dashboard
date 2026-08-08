@@ -5,15 +5,18 @@ import {
 } from '@open-family/ui'
 import { usePerfLab } from '../../perflab/PerfLabContext'
 
+const SHARE_MODES = [
+  { value: 'shareMode.all', label: 'All threads' },
+  { value: 'shareMode.group', label: 'Current thread group' },
+  { value: 'shareMode.thread', label: 'Current thread' },
+]
+
 /**
  * Users and data — virtual-user count, ramp, and the inline CSV dataset. This was
  * the `users` tab.
  *
  * These columns *do* reach the executed test: `opl-api` writes `data.csv` beside the
  * plan and emits a matching CSV Data Set element, so `${column}` binds at run time.
- * This tab is a thin editor over that contract and does not itself validate columns —
- * the banner points at Validate, which cross-checks every `${…}` reference against the
- * declared columns rather than guessing.
  */
 export default function UsersTab() {
   const { form, setForm, busy, saveScenario } = usePerfLab()
@@ -23,6 +26,14 @@ export default function UsersTab() {
     ...form,
     datasets: { ...form.datasets, csv: { ...csv, ...patch } },
   })
+
+  const shareValue = (() => {
+    const raw = csv.share_mode || 'shareMode.all'
+    if (raw === 'all' || raw === 'shareMode.all') return 'shareMode.all'
+    if (raw === 'group' || raw === 'shareMode.group') return 'shareMode.group'
+    if (raw === 'thread' || raw === 'shareMode.thread') return 'shareMode.thread'
+    return raw
+  })()
 
   return (
     <Stack gap="sections">
@@ -81,7 +92,7 @@ export default function UsersTab() {
 
       <Card
         title="Dataset"
-        description="An inline CSV, written with this delimiter and read back by the plan with the same one."
+        description="An inline CSV, written with this delimiter and read back by the plan with the same one. Every field maps to datasets_json.csv and the emitted CSVDataSet."
         footer={(
           <Button variant="primary" icon={<FiSave />} disabled={busy} onClick={saveScenario}>
             Save users and datasets
@@ -97,8 +108,23 @@ export default function UsersTab() {
                   { value: '1', label: 'Yes — loop the rows' },
                   { value: '0', label: 'No — stop when exhausted' },
                 ]}
-                value={csv.recycle ? '1' : '0'}
+                value={csv.recycle !== false ? '1' : '0'}
                 onChange={(e) => setCsv({ recycle: e.target.value === '1' })}
+              />
+            </Field>
+            <Field
+              label="Stop thread when exhausted"
+              hint="Mutually exclusive with recycle — the API drops stop_thread when recycle is on."
+              htmlFor="users-stop"
+            >
+              <Select
+                id="users-stop"
+                options={[
+                  { value: '0', label: 'No' },
+                  { value: '1', label: 'Yes' },
+                ]}
+                value={csv.stop_thread ? '1' : '0'}
+                onChange={(e) => setCsv({ stop_thread: e.target.value === '1' })}
               />
             </Field>
             <Field
@@ -124,6 +150,51 @@ export default function UsersTab() {
               />
             </Field>
           </div>
+
+          <details className="opl-adv" open>
+            <summary>Advanced — CSVDataSet</summary>
+            <div className="opl-adv-body">
+              <div className="opl-field-grid">
+                <Field label="Share mode" htmlFor="users-share">
+                  <Select
+                    id="users-share"
+                    options={SHARE_MODES}
+                    value={shareValue}
+                    onChange={(e) => setCsv({ share_mode: e.target.value })}
+                  />
+                </Field>
+                <Field label="Quoted data" htmlFor="users-quoted">
+                  <Select
+                    id="users-quoted"
+                    options={[
+                      { value: '1', label: 'Yes' },
+                      { value: '0', label: 'No' },
+                    ]}
+                    value={csv.quoted !== false ? '1' : '0'}
+                    onChange={(e) => setCsv({ quoted: e.target.value === '1' })}
+                  />
+                </Field>
+                <Field label="Ignore first line" htmlFor="users-ignore-first">
+                  <Select
+                    id="users-ignore-first"
+                    options={[
+                      { value: '0', label: 'No' },
+                      { value: '1', label: 'Yes' },
+                    ]}
+                    value={csv.ignore_first_line ? '1' : '0'}
+                    onChange={(e) => setCsv({ ignore_first_line: e.target.value === '1' })}
+                  />
+                </Field>
+                <Field label="Encoding" htmlFor="users-encoding">
+                  <Input
+                    id="users-encoding"
+                    value={csv.encoding || 'UTF-8'}
+                    onChange={(e) => setCsv({ encoding: e.target.value })}
+                  />
+                </Field>
+              </div>
+            </div>
+          </details>
 
           <Field
             label="CSV rows"

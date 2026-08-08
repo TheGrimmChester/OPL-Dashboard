@@ -69,6 +69,16 @@ export default function SlaGates() {
               onChange={(e) => setForm({ ...form, sla: { ...form.sla, error_rate_max: Number(e.target.value) } })}
             />
           </Field>
+          <Field label="Min RPS" hint="0 disables the throughput floor." htmlFor="sla-rps">
+            <Input
+              id="sla-rps"
+              type="number"
+              min={0}
+              step="0.1"
+              value={form.sla.rps_min ?? 0}
+              onChange={(e) => setForm({ ...form, sla: { ...form.sla, rps_min: Number(e.target.value) } })}
+            />
+          </Field>
           <Field label="Run to judge" className="opl-span-2">
             <Select
               aria-label="Run to judge"

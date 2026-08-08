@@ -26,16 +26,28 @@ export const STEP_TYPES = [
   { value: 'rendezvous', label: 'Burst (synchronising timer)' },
 ]
 
+export const ESSENTIAL_STEP_TYPES = ['http', 'transaction', 'extract', 'assert']
+export const LOGIC_STEP_TYPES = ['if', 'while', 'loop', 'foreach', 'fragment', 'include', 'rendezvous']
+
 export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']
 
+const defaultHealthUrl = () => `${(import.meta.env.VITE_API_URL || 'http://127.0.0.1:8092')}/api/health`
+
+/** Defaults for a brand-new HTTP step (and the form's initial journey). */
 export const emptyStep = () => ({
   type: 'http',
   name: 'Request',
   method: 'GET',
-  url: `${(import.meta.env.VITE_API_URL || 'http://127.0.0.1:8092')}/api/health`,
+  url: defaultHealthUrl(),
   body: '',
   think_ms: 50,
+  think_ms_rand: 0,
+  follow_redirects: true,
+  always_encode: false,
+  connect_timeout_ms: 0,
+  response_timeout_ms: 0,
   headers: {},
+  enabled: true,
   selector_type: '',
   selector: '',
   page_url: '',
@@ -43,8 +55,129 @@ export const emptyStep = () => ({
   children: [],
 })
 
+/**
+ * Factory for palette "Add …" buttons. Headers stay a plain object for the API;
+ * the inspector edits them as rows via headersToRows / rowsToHeaders.
+ */
+export function makeNode(type) {
+  if (type === 'http') {
+    return {
+      ...emptyStep(),
+      url: '',
+    }
+  }
+  if (type === 'container' || type === 'transaction') {
+    return {
+      type: 'transaction',
+      name: 'Transaction',
+      enabled: true,
+      include_timers: false,
+      generate_parent_sample: false,
+      children: [],
+    }
+  }
+  if (type === 'if') {
+    return {
+      type: 'if',
+      name: 'If',
+      condition: '${__jexl3(true)}',
+      use_expression: true,
+      evaluate_all: false,
+      enabled: true,
+      children: [],
+    }
+  }
+  if (type === 'while') {
+    return {
+      type: 'while',
+      name: 'While',
+      condition: '${__jexl3(false)}',
+      use_expression: true,
+      enabled: true,
+      children: [],
+    }
+  }
+  if (type === 'loop') {
+    return {
+      type: 'loop',
+      name: 'Loop',
+      loops: 1,
+      forever: false,
+      enabled: true,
+      children: [],
+    }
+  }
+  if (type === 'foreach') {
+    return {
+      type: 'foreach',
+      name: 'ForEach',
+      input_var: 'items',
+      return_var: 'item',
+      use_separator: true,
+      enabled: true,
+      children: [],
+    }
+  }
+  if (type === 'fragment') {
+    return {
+      type: 'fragment',
+      name: 'SharedFragment',
+      enabled: true,
+      children: [],
+    }
+  }
+  if (type === 'include' || type === 'link') {
+    return {
+      type: 'include',
+      name: 'Include',
+      ref: 'SharedFragment',
+      params: {},
+      enabled: true,
+    }
+  }
+  if (type === 'rendezvous') {
+    return {
+      type: 'rendezvous',
+      name: 'Burst',
+      group_size: 0,
+      timeout_ms: 0,
+      enabled: true,
+    }
+  }
+  if (type === 'extract') {
+    return {
+      type: 'extract',
+      name: 'Extract',
+      engine: 'jsonpath',
+      expression: '',
+      var: 'token',
+      match_number: 1,
+      template: '$1$',
+      default_value: '',
+      enabled: true,
+    }
+  }
+  return {
+    type: 'assert',
+    name: 'Assert',
+    status: 200,
+    body_contains: '',
+    assert_type: 'contains',
+    assert_field: 'response_code',
+    assume_success: false,
+    enabled: true,
+  }
+}
+
+/** Headers as Name: value lines (legacy textarea). */
 export function headersToText(headers) {
   if (!headers || typeof headers !== 'object') return ''
+  if (Array.isArray(headers)) {
+    return headers
+      .filter((h) => h && (h.name || h.key))
+      .map((h) => `${h.name || h.key}: ${h.value ?? ''}`)
+      .join('\n')
+  }
   return Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\n')
 }
 
@@ -60,9 +193,39 @@ export function textToHeaders(text) {
   return out
 }
 
+/** Editable table rows ↔ headers object (API shape). */
+export function headersToRows(headers) {
+  if (Array.isArray(headers)) {
+    return headers.map((h) => ({
+      name: String(h?.name || h?.key || ''),
+      value: String(h?.value ?? ''),
+    }))
+  }
+  if (!headers || typeof headers !== 'object') return []
+  return Object.entries(headers).map(([name, value]) => ({
+    name,
+    value: String(value ?? ''),
+  }))
+}
+
+export function rowsToHeaders(rows) {
+  const out = {}
+  for (const r of rows || []) {
+    const k = String(r?.name || '').trim()
+    if (k) out[k] = String(r?.value ?? '')
+  }
+  return out
+}
+
 /** Fragment inputs edit as `name=value` lines and save as a plain object. */
 export function paramsToText(params) {
   if (!params || typeof params !== 'object') return ''
+  if (Array.isArray(params)) {
+    return params
+      .filter((p) => p && (p.name || p.key))
+      .map((p) => `${p.name || p.key}=${p.value ?? ''}`)
+      .join('\n')
+  }
   return Object.entries(params).map(([k, v]) => `${k}=${v}`).join('\n')
 }
 
@@ -74,6 +237,29 @@ export function textToParams(text) {
     const k = line.slice(0, i).trim()
     if (k) out[k] = line.slice(i + 1).trim()
   })
+  return out
+}
+
+export function paramsToRows(params) {
+  if (Array.isArray(params)) {
+    return params.map((p) => ({
+      name: String(p?.name || p?.key || ''),
+      value: String(p?.value ?? ''),
+    }))
+  }
+  if (!params || typeof params !== 'object') return []
+  return Object.entries(params).map(([name, value]) => ({
+    name,
+    value: String(value ?? ''),
+  }))
+}
+
+export function rowsToParams(rows) {
+  const out = {}
+  for (const r of rows || []) {
+    const k = String(r?.name || '').trim()
+    if (k) out[k] = String(r?.value ?? '')
+  }
   return out
 }
 
@@ -136,8 +322,20 @@ export const DEFAULT_FORM = () => ({
   vus: 10,
   duration_seconds: 60,
   steps: [emptyStep()],
-  datasets: { csv: { inline: '', variableNames: 'user,token', delimiter: ',', recycle: true } },
-  sla: { p95_ms: 500, error_rate_max: 0.05 },
+  datasets: {
+    csv: {
+      inline: '',
+      variableNames: 'user,token',
+      delimiter: ',',
+      recycle: true,
+      stop_thread: false,
+      share_mode: 'shareMode.all',
+      quoted: true,
+      ignore_first_line: false,
+      encoding: 'UTF-8',
+    },
+  },
+  sla: { p95_ms: 500, error_rate_max: 0.05, rps_min: 0 },
   schedule: { ramp_seconds: 10, enabled: false, every_minutes: 0, daily_at: '' },
   jmx_xml: '',
 })

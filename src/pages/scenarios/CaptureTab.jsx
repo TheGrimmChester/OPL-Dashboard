@@ -1,10 +1,13 @@
 import React from 'react'
 import { FiDownload, FiUpload } from 'react-icons/fi'
 import {
-  Button, Card, EmptyState, Field, Select, Stack, Table, TableCaption,
+  Banner, Button, Card, Code, EmptyState, Field, Select, Stack, Table, TableCaption,
 } from '@open-family/ui'
 import { usePerfLab } from '../../perflab/PerfLabContext'
 import { fmtNum } from '../../theme/format'
+import {
+  asWarningList, mentionsPrivateHosts, skipTallyFrom,
+} from '../../perflab/captureHints'
 
 /** A hidden file input dressed as a button, so the control matches every other one. */
 function ImportButton({ label, accept, onFile, variant = 'secondary' }) {
@@ -40,12 +43,23 @@ export default function CaptureTab() {
   const {
     captureDryRun, setCaptureDryRun,
     captureIncludeStatic, setCaptureIncludeStatic,
-    capturePreview, applyCapturePreview,
+    capturePreview, captureImportError, applyCapturePreview,
     importCaptureFile, downloadCapture, selectedId,
   } = usePerfLab()
 
   const previewSteps = (capturePreview?.steps || capturePreview?.scenario?.steps || []).slice(0, 50)
-  const warnings = capturePreview?.warnings || []
+  const warnings = asWarningList(capturePreview?.warnings)
+  const errorText = (() => {
+    const err = captureImportError
+    if (!err) return ''
+    if (typeof err === 'string') return err
+    if (typeof err === 'object') return err.error || err.message || JSON.stringify(err)
+    return String(err)
+  })()
+  const skipped = skipTallyFrom(capturePreview, warnings)
+  const count = Number(capturePreview?.count || previewSteps.length) || 0
+  const emptySuccess = Boolean(capturePreview) && count === 0
+  const showPrivateHint = mentionsPrivateHosts(errorText, ...warnings)
 
   return (
     <Stack gap="sections">
@@ -107,10 +121,56 @@ export default function CaptureTab() {
         </Stack>
       </Card>
 
+      {errorText ? (
+        <Banner tone="critical" title="Import failed">
+          {errorText}
+        </Banner>
+      ) : null}
+
+      {emptySuccess ? (
+        <Banner tone="warning" title="No HTTP steps left after import">
+          Every entry was skipped or empty. Check the warnings below — private or metadata hosts are
+          filtered by the URL policy unless allowlisted for validate/run.
+        </Banner>
+      ) : null}
+
+      {skipped > 0 && (
+        <Banner tone="warning" title={`${fmtNum(skipped)} entries skipped`}>
+          Static assets, OPTIONS, empty URLs, or blocked hosts were dropped before the journey was built.
+        </Banner>
+      )}
+
+      {warnings.length > 0 && (
+        <Banner tone="warning" title={`${warnings.length} import warning${warnings.length === 1 ? '' : 's'}`}>
+          <ul className="opl-warn-list">
+            {warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </Banner>
+      )}
+
+      {showPrivateHint && (
+        <Banner tone="accent" title="Private hosts need an allowlist">
+          Captures against lab or NAS addresses (for example
+          {' '}
+          <Code>192.168.100.101</Code>
+          ) are skipped by default. For validate and run against those hosts, set
+          {' '}
+          <Code>OPA_PERF_INTERNAL_HOSTS</Code>
+          {' '}
+          on
+          {' '}
+          <Code>opl-api</Code>
+          {' '}
+          (comma-separated hostnames or IPs), then re-import or re-validate.
+        </Banner>
+      )}
+
       <Card
         title="Preview"
         description={capturePreview
-          ? `${fmtNum(capturePreview.count || previewSteps.length)} steps parsed${warnings.length ? ` · ${warnings.join(' · ')}` : ''}`
+          ? `${fmtNum(count)} steps parsed${skipped ? ` · ${fmtNum(skipped)} skipped` : ''}${warnings.length ? ` · ${warnings.length} warning${warnings.length === 1 ? '' : 's'}` : ''}`
           : 'What the importer read, before anything is written.'}
         actions={capturePreview && captureDryRun && previewSteps.length > 0
           ? <Button variant="primary" onClick={applyCapturePreview}>Apply to the designer</Button>
@@ -129,8 +189,10 @@ export default function CaptureTab() {
           getRowKey={(_r, i) => String(i)}
           emptyState={(
             <EmptyState
-              title="No capture loaded"
-              description="Export a HAR from the browser's network panel, or an XHR JSON array, and drop it in above. The first fifty steps are shown here."
+              title={capturePreview ? 'No steps to show' : 'No capture loaded'}
+              description={capturePreview
+                ? 'The importer returned zero HTTP steps. Review the warnings above — private hosts are a common cause on NAS captures.'
+                : 'Export a HAR from the browser\'s network panel, or an XHR JSON array, and drop it in above. The first fifty steps are shown here.'}
             />
           )}
         />
@@ -140,7 +202,7 @@ export default function CaptureTab() {
               {'Showing the first '}
               <strong className="oui-num">{fmtNum(previewSteps.length)}</strong>
               {' of '}
-              <strong className="oui-num">{fmtNum(capturePreview.count || previewSteps.length)}</strong>
+              <strong className="oui-num">{fmtNum(count)}</strong>
               {' parsed steps'}
             </span>
           </TableCaption>

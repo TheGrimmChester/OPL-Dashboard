@@ -8,6 +8,7 @@ import VuTree from '../../components/VuTree'
 import StepInspector from '../../components/StepInspector'
 import ScenarioTable from '../../components/ScenarioTable'
 import { usePerfLab } from '../../perflab/PerfLabContext'
+import { resolveTriagePath } from '../../perflab/treeOps'
 
 const SEVERITY_TONE = { error: 'critical', warn: 'warning', warning: 'warning', info: 'accent' }
 
@@ -18,7 +19,10 @@ const REFERENCE_LABEL = { module_reference: 'module reference', inline_expansion
 
 /** The validation result: triage items and auto-correlation suggestions. */
 function ValidationReport() {
-  const { validateResult, setValidateResult, applyCorrelationSuggestion } = usePerfLab()
+  const {
+    form, validateResult, setValidateResult, applyCorrelationSuggestion, setSelectedStepPath,
+  } = usePerfLab()
+  const navigate = useNavigate()
   if (!validateResult) return null
 
   const passed = validateResult.pass !== false && validateResult.ok !== false
@@ -29,6 +33,14 @@ function ValidationReport() {
   const references = Array.isArray(validateResult.fragment_references)
     ? validateResult.fragment_references
     : []
+  const unbound = Array.isArray(validateResult.unbound_variables)
+    ? validateResult.unbound_variables
+    : []
+
+  const openInTree = (item) => {
+    const path = resolveTriagePath(form.steps, item)
+    if (path) setSelectedStepPath(path)
+  }
 
   return (
     <Card
@@ -53,6 +65,32 @@ function ValidationReport() {
             : 'Fix these before scaling — under load a broken step multiplies rather than fails once.'}
         </Banner>
 
+        {unbound.length > 0 && (
+          <Banner
+            tone="warning"
+            title={`${unbound.length} unbound variable${unbound.length === 1 ? '' : 's'}`}
+            actions={(
+              <Button size="sm" onClick={() => navigate('/scenarios/users')}>
+                Open Users & data
+              </Button>
+            )}
+          >
+            These
+            {' '}
+            <Code>{'${…}'}</Code>
+            {' '}
+            tokens have no dataset column, extractor, or ForEach binding:
+            {' '}
+            {unbound.map((v, i) => (
+              <React.Fragment key={String(v)}>
+                {i > 0 ? ', ' : ''}
+                <Code>{String(v)}</Code>
+              </React.Fragment>
+            ))}
+            .
+          </Banner>
+        )}
+
         {triage.map((t, i) => (
           <div className="opl-triage" key={i} data-severity={t.severity || 'error'}>
             <div className="oui-row">
@@ -61,6 +99,10 @@ function ValidationReport() {
               </Badge>
               <strong>{`#${t.index} ${t.type || 'step'}`}</strong>
               {t.name ? <span className="oui-text-secondary">{t.name}</span> : null}
+              <span className="oui-spacer" />
+              <Button size="sm" variant="ghost" onClick={() => openInTree(t)}>
+                Open in tree
+              </Button>
             </div>
             <p className="oui-text-sm oui-text-secondary">{t.hint || t.error}</p>
             {t.body_preview && (
@@ -192,6 +234,16 @@ export default function StepsTab() {
               onChange={(e) => setForm({ ...form, sla: { ...form.sla, error_rate_max: Number(e.target.value) } })}
             />
           </Field>
+          <Field label="Min RPS" hint="0 disables the throughput floor." htmlFor="scenario-rps">
+            <Input
+              id="scenario-rps"
+              type="number"
+              min={0}
+              step="0.1"
+              value={form.sla.rps_min ?? 0}
+              onChange={(e) => setForm({ ...form, sla: { ...form.sla, rps_min: Number(e.target.value) } })}
+            />
+          </Field>
         </div>
       </Card>
 
@@ -199,7 +251,7 @@ export default function StepsTab() {
 
       <Card
         title="Virtual user"
-        description="A nested journey tree — HTTP requests, transactions, If / While / Loop / ForEach controllers, extractors and asserts. Optional CSS or XPath selectors correlate a recorded UI action with the request it made."
+        description="A nested journey tree — HTTP requests, transactions, If / While / Loop / ForEach controllers, extractors and asserts. Essentials stay on the palette; Logic & reuse expands controllers, fragments and burst."
         footer={(
           <div className="oui-row">
             <Button variant="primary" icon={<FiSave />} disabled={busy} onClick={saveScenario}>
@@ -228,6 +280,9 @@ export default function StepsTab() {
           </div>
           <div className="opl-designer-inspector">
             <h3 className="opl-subhead">Inspector</h3>
+            <p className="oui-text-sm oui-text-muted" style={{ margin: 0 }}>
+              Basics always visible · Advanced discloses every supported JMeter prop for this node type.
+            </p>
             <StepInspector />
           </div>
         </div>
