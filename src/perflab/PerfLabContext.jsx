@@ -488,6 +488,10 @@ export function PerfLabProvider({ children }) {
   }
 
   const saveSchedule = async () => {
+    if (!hasConcreteProject) {
+      flash('warn', 'Select one project', 'All projects and multi-select are list-only.')
+      return
+    }
     if (!selectedId) {
       flash('error', 'Select a scenario', 'Save the scenario first, then patch schedule.')
       return
