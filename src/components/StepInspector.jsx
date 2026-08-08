@@ -1,14 +1,16 @@
 import React, { useMemo } from 'react'
 import { FiPlus, FiTrash2 } from 'react-icons/fi'
 import {
-  Button, EmptyState, Field, Input, Select, Textarea,
+  Button, EmptyState, Field, Input, Select,
 } from '@open-family/ui'
 import {
   HTTP_METHODS, STEP_TYPES,
   headersToRows, rowsToHeaders, paramsToRows, rowsToParams,
 } from '../perflab/model'
+import { collectKnownVars } from '../perflab/knownVars'
 import { collectFragmentNames } from '../perflab/treeOps'
 import { usePerfLab } from '../perflab/PerfLabContext'
+import ExprAutocomplete from './ExprAutocomplete'
 
 const asOptions = (values) => values.map((v) => (typeof v === 'string' ? { value: v, label: v } : v))
 
@@ -32,7 +34,10 @@ function AdvSection({ title, children, defaultOpen = false }) {
   )
 }
 
-function KeyValueRows({ rows, onChange, namePlaceholder = 'Name', valuePlaceholder = 'Value', addLabel = 'Add row' }) {
+function KeyValueRows({
+  rows, onChange, namePlaceholder = 'Name', valuePlaceholder = 'Value', addLabel = 'Add row',
+  knownVars = [], valueMode = 'expr', nameMode = null,
+}) {
   const list = rows.length ? rows : [{ name: '', value: '' }]
   const setRow = (i, patch) => {
     const next = list.map((r, idx) => (idx === i ? { ...r, ...patch } : r))
@@ -45,13 +50,26 @@ function KeyValueRows({ rows, onChange, namePlaceholder = 'Name', valuePlacehold
     <div className="opl-kv-rows">
       {list.map((row, i) => (
         <div className="opl-kv-row" key={i}>
-          <Input
-            value={row.name}
-            onChange={(e) => setRow(i, { name: e.target.value })}
-            placeholder={namePlaceholder}
-            aria-label={`${namePlaceholder} ${i + 1}`}
-          />
-          <Input
+          {nameMode ? (
+            <ExprAutocomplete
+              mode={nameMode}
+              knownVars={knownVars}
+              value={row.name}
+              onChange={(e) => setRow(i, { name: e.target.value })}
+              placeholder={namePlaceholder}
+              aria-label={`${namePlaceholder} ${i + 1}`}
+            />
+          ) : (
+            <Input
+              value={row.name}
+              onChange={(e) => setRow(i, { name: e.target.value })}
+              placeholder={namePlaceholder}
+              aria-label={`${namePlaceholder} ${i + 1}`}
+            />
+          )}
+          <ExprAutocomplete
+            mode={valueMode}
+            knownVars={knownVars}
             className="oui-mono"
             value={row.value}
             onChange={(e) => setRow(i, { value: e.target.value })}
@@ -83,6 +101,10 @@ export default function StepInspector() {
   const fragmentNames = useMemo(
     () => collectFragmentNames(form?.steps || []),
     [form?.steps],
+  )
+  const knownVars = useMemo(
+    () => collectKnownVars(form?.steps || [], form?.datasets?.csv?.variableNames),
+    [form?.steps, form?.datasets?.csv?.variableNames],
   )
 
   if (!selectedStep) {
@@ -155,20 +177,35 @@ export default function StepInspector() {
                 onChange={(e) => patchSelectedStep({ think_ms: Number(e.target.value) })}
               />
             </Field>
-            <Field label="URL" className="opl-span-4">
-              <Input
+            <Field
+              label="URL"
+              className="opl-span-4"
+              hint={'Type ${ for variables & expressions'}
+            >
+              <ExprAutocomplete
+                mode="expr"
+                knownVars={knownVars}
                 value={selectedStep.url || ''}
                 onChange={(e) => patchSelectedStep({ url: e.target.value })}
                 placeholder={'https://… or ${token}'}
+                aria-label="URL"
               />
             </Field>
-            <Field label="Body" className="opl-span-4">
-              <Textarea
+            <Field
+              label="Body"
+              className="opl-span-4"
+              hint={'Type ${ for variables & expressions'}
+            >
+              <ExprAutocomplete
+                as="textarea"
+                mode="expr"
+                knownVars={knownVars}
                 className="oui-mono"
                 rows={3}
                 value={selectedStep.body || ''}
                 onChange={(e) => patchSelectedStep({ body: e.target.value })}
                 placeholder="Optional request body"
+                aria-label="Body"
               />
             </Field>
           </div>
@@ -180,6 +217,8 @@ export default function StepInspector() {
             </p>
             <KeyValueRows
               rows={headerRows}
+              knownVars={knownVars}
+              valuePlaceholder={'Value or ${var}'}
               onChange={(rows) => patchSelectedStep({ headers: rowsToHeaders(rows) })}
               addLabel="Add header"
             />
@@ -281,8 +320,10 @@ export default function StepInspector() {
                 onChange={(e) => patchSelectedStep({ engine: e.target.value })}
               />
             </Field>
-            <Field label="Variable">
-              <Input
+            <Field label="Variable" hint="Suggests existing binder names">
+              <ExprAutocomplete
+                mode="bind"
+                knownVars={knownVars}
                 value={selectedStep.var || ''}
                 onChange={(e) => patchSelectedStep({ var: e.target.value })}
                 aria-label="Extracted variable name"
@@ -314,9 +355,12 @@ export default function StepInspector() {
                 />
               </Field>
               <Field label="Default value" className="opl-span-4">
-                <Input
+                <ExprAutocomplete
+                  mode="expr"
+                  knownVars={knownVars}
                   value={selectedStep.default_value || ''}
                   onChange={(e) => patchSelectedStep({ default_value: e.target.value })}
+                  aria-label="Default value"
                 />
               </Field>
             </div>
@@ -334,10 +378,13 @@ export default function StepInspector() {
                 onChange={(e) => patchSelectedStep({ status: Number(e.target.value) })}
               />
             </Field>
-            <Field label="Body contains" className="opl-span-3">
-              <Input
+            <Field label="Body contains" className="opl-span-3" hint={'Type ${ for variables'}>
+              <ExprAutocomplete
+                mode="expr"
+                knownVars={knownVars}
                 value={selectedStep.body_contains || ''}
                 onChange={(e) => patchSelectedStep({ body_contains: e.target.value })}
+                aria-label="Body contains"
               />
             </Field>
           </div>
@@ -419,11 +466,14 @@ export default function StepInspector() {
                 : 'A JMeter expression. Children run when it is true.'}
               className="opl-span-4"
             >
-              <Input
+              <ExprAutocomplete
+                mode="expr"
+                knownVars={knownVars}
                 className="oui-mono"
                 value={selectedStep.condition || ''}
                 onChange={(e) => patchSelectedStep({ condition: e.target.value })}
                 placeholder={'${__jexl3("${status}"=="200")}'}
+                aria-label="Condition"
               />
             </Field>
           </div>
@@ -476,19 +526,25 @@ export default function StepInspector() {
       {isController('foreach', 'foreach_controller', 'for_each') && (
         <div className="opl-field-grid">
           <Field label="Input variable" hint="ForEachController iterates input_1…N.">
-            <Input
+            <ExprAutocomplete
+              mode="bind"
+              knownVars={knownVars}
               className="oui-mono"
               value={selectedStep.input_var || ''}
               onChange={(e) => patchSelectedStep({ input_var: e.target.value })}
               placeholder="items"
+              aria-label="Input variable"
             />
           </Field>
           <Field label="Return variable" hint="The name each iteration binds.">
-            <Input
+            <ExprAutocomplete
+              mode="bind"
+              knownVars={knownVars}
               className="oui-mono"
               value={selectedStep.return_var || ''}
               onChange={(e) => patchSelectedStep({ return_var: e.target.value })}
               placeholder="item"
+              aria-label="Return variable"
             />
           </Field>
           <Field label="Use separator" className="opl-span-2">
@@ -533,6 +589,9 @@ export default function StepInspector() {
           >
             <KeyValueRows
               rows={paramRows}
+              knownVars={knownVars}
+              nameMode="bind"
+              valueMode="expr"
               onChange={(rows) => patchSelectedStep({ params: rowsToParams(rows) })}
               addLabel="Add input"
             />
