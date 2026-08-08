@@ -1,204 +1,62 @@
 import React, { useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   FiArrowDown, FiArrowUp, FiChevronDown, FiChevronRight, FiPlus, FiTrash2,
 } from 'react-icons/fi'
-import { Button, EmptyState } from '@open-family/ui'
+import { Button, EmptyState, Input } from '@open-family/ui'
+import { ESSENTIAL_STEP_TYPES, LOGIC_STEP_TYPES, makeNode } from '../perflab/model'
+import {
+  getAtPath,
+  insertChildAt,
+  isNestableType,
+  matchesFilter,
+  moveStepDnD,
+  moveStepInList,
+  nodeMatchesFilter,
+  removeStepAt,
+  replaceInTree,
+  setEnabledAt,
+} from '../perflab/treeOps'
 
-/** Path into nested steps: e.g. [0, 'children', 1] */
-export function getAtPath(steps, path) {
-  let cur = steps
-  for (let i = 0; i < path.length; i++) {
-    const key = path[i]
-    if (key === 'children') {
-      cur = cur?.children || []
-      continue
-    }
-    cur = Array.isArray(cur) ? cur[key] : undefined
-  }
-  return cur
-}
+export {
+  getAtPath,
+  patchStepAt,
+  removeStepAt,
+  insertChildAt,
+  moveStepInList,
+  moveStepDnD,
+} from '../perflab/treeOps'
 
-function setAtPathImmutable(steps, path, updater) {
-  if (!path.length) return updater(steps)
-  const [head, ...rest] = path
-  if (head === 'children') {
-    return updater(steps)
-  }
-  return steps.map((s, i) => {
-    if (i !== head) return s
-    if (!rest.length) return updater(s)
-    if (rest[0] === 'children') {
-      const childPath = rest.slice(1)
-      const children = Array.isArray(s.children) ? s.children : []
-      if (!childPath.length) {
-        return { ...s, children: updater(children) }
-      }
-      return { ...s, children: setAtPathImmutable(children, childPath, updater) }
-    }
-    return s
-  })
-}
-
-export function patchStepAt(steps, path, patch) {
-  return setAtPathImmutable(steps, path, (node) => {
-    if (Array.isArray(node)) return node
-    return { ...node, ...patch }
-  })
-}
-
-export function removeStepAt(steps, path) {
-  if (!path.length) return steps
-  const idx = path[path.length - 1]
-  const parentPath = path.slice(0, -1)
-  if (!parentPath.length) {
-    return steps.filter((_, i) => i !== idx)
-  }
-  const withoutIdx = path.slice(0, -1)
-  return setAtPathImmutable(steps, withoutIdx, (children) => {
-    if (!Array.isArray(children)) return children
-    return children.filter((_, i) => i !== idx)
-  })
-}
-
-export function insertChildAt(steps, parentPath, child) {
-  if (!parentPath.length) {
-    return [...steps, child]
-  }
-  return setAtPathImmutable(steps, [...parentPath, 'children'], (children) => {
-    const list = Array.isArray(children) ? children : []
-    return [...list, child]
-  })
-}
-
-export function moveStepInList(steps, path, dir) {
-  const idx = path[path.length - 1]
-  const j = idx + dir
-  if (typeof idx !== 'number') return steps
-  const parentPath = path.slice(0, -1)
-  const rewrite = (list) => {
-    if (!Array.isArray(list) || j < 0 || j >= list.length) return list
-    const next = [...list]
-    ;[next[idx], next[j]] = [next[j], next[idx]]
-    return next
-  }
-  if (!parentPath.length) return rewrite(steps)
-  return setAtPathImmutable(steps, parentPath, rewrite)
-}
-
-/** True when `descendant` is the same as or nested under `ancestor`. */
-function pathIsUnder(descendant, ancestor) {
-  if (!ancestor?.length) return false
-  if (descendant.length < ancestor.length) return false
-  return ancestor.every((v, i) => descendant[i] === v)
-}
-
-/**
- * Drag-and-drop move: remove from `fromPath`, insert into sibling list at
- * `toPath` (before that node) or into `intoPath`'s children when dropping on a container.
- */
-export function moveStepDnD(steps, fromPath, toPath, mode = 'before') {
-  if (!fromPath?.length || !toPath?.length) return steps
-  if (fromPath.join('.') === toPath.join('.')) return steps
-  if (pathIsUnder(toPath, fromPath)) return steps // cannot drop into self/descendant
-
-  const node = getAtPath(steps, fromPath)
-  if (!node || Array.isArray(node)) return steps
-
-  let next = removeStepAt(steps, fromPath)
-
-  // Adjust toPath indices if we removed an earlier sibling in the same list.
-  const adjustedTo = [...toPath]
-  const fromParent = fromPath.slice(0, -1)
-  const toParent = toPath.slice(0, -1)
-  if (fromParent.join('.') === toParent.join('.')) {
-    const fromIdx = fromPath[fromPath.length - 1]
-    const toIdx = toPath[toPath.length - 1]
-    if (typeof fromIdx === 'number' && typeof toIdx === 'number' && fromIdx < toIdx) {
-      adjustedTo[adjustedTo.length - 1] = toIdx - 1
-    }
-  }
-
-  if (mode === 'into') {
-    const parent = getAtPath(next, adjustedTo)
-    if (!parent || Array.isArray(parent) || !isNestableType(parent.type)) return steps
-    return insertChildAt(next, adjustedTo, structuredClone(node))
-  }
-
-  const idx = adjustedTo[adjustedTo.length - 1]
-  const parentPath = adjustedTo.slice(0, -1)
-  const insertAt = (list) => {
-    if (!Array.isArray(list)) return list
-    const out = [...list]
-    const at = mode === 'after' ? idx + 1 : idx
-    out.splice(Math.max(0, Math.min(at, out.length)), 0, structuredClone(node))
-    return out
-  }
-  if (!parentPath.length) return insertAt(next)
-  return setAtPathImmutable(next, parentPath, insertAt)
-}
-
-function isNestableType(type) {
-  const t = type || 'http'
-  return t === 'http' || t === 'transaction' || t === 'container'
-    || t === 'if' || t === 'while' || t === 'loop' || t === 'foreach'
-    || t === 'fragment'
-    || t === 'if_controller' || t === 'while_controller' || t === 'loop_controller'
-    || t === 'foreach_controller'
+const TYPE_LABELS = {
+  http: 'HTTP',
+  transaction: 'Txn',
+  container: 'Txn',
+  extract: 'Extract',
+  assert: 'Assert',
+  if: 'If',
+  if_controller: 'If',
+  while: 'While',
+  while_controller: 'While',
+  loop: 'Loop',
+  loop_controller: 'Loop',
+  foreach: 'ForEach',
+  foreach_controller: 'ForEach',
+  for_each: 'ForEach',
+  fragment: 'Frag',
+  include: 'Link',
+  link: 'Link',
+  rendezvous: 'Burst',
 }
 
 function typeLabel(step) {
   const t = step?.type || 'http'
-  if (t === 'container' || t === 'transaction') return 'Txn'
-  if (t === 'extract') return 'Extract'
-  if (t === 'assert') return 'Assert'
-  if (t === 'if' || t === 'if_controller') return 'If'
-  if (t === 'while' || t === 'while_controller') return 'While'
-  if (t === 'loop' || t === 'loop_controller') return 'Loop'
-  if (t === 'foreach' || t === 'foreach_controller' || t === 'for_each') return 'ForEach'
-  if (t === 'fragment') return 'Frag'
-  if (t === 'include' || t === 'link') return 'Link'
-  if (t === 'rendezvous') return 'Burst'
+  if (TYPE_LABELS[t]) return TYPE_LABELS[t]
   return (step?.method || 'HTTP').toUpperCase()
-}
-
-function makeNode(type) {
-  if (type === 'http') {
-    return { type: 'http', name: 'Request', method: 'GET', url: '', body: '', think_ms: 50, headers: {}, children: [] }
-  }
-  if (type === 'container' || type === 'transaction') {
-    return { type: 'transaction', name: 'Transaction', children: [] }
-  }
-  if (type === 'if') {
-    return { type: 'if', name: 'If', condition: '${__jexl3(true)}', children: [] }
-  }
-  if (type === 'while') {
-    return { type: 'while', name: 'While', condition: '${__jexl3(false)}', children: [] }
-  }
-  if (type === 'loop') {
-    return { type: 'loop', name: 'Loop', loops: 2, forever: false, children: [] }
-  }
-  if (type === 'foreach') {
-    return { type: 'foreach', name: 'ForEach', input_var: 'items', return_var: 'item', use_separator: true, children: [] }
-  }
-  if (type === 'fragment') {
-    return { type: 'fragment', name: 'SharedFragment', children: [] }
-  }
-  if (type === 'include' || type === 'link') {
-    return { type: 'include', name: 'Include', ref: 'SharedFragment', params: {} }
-  }
-  if (type === 'rendezvous') {
-    // group_size 0 is JMeter's "every thread in the group".
-    return { type: 'rendezvous', name: 'Burst', group_size: 0, timeout_ms: 0 }
-  }
-  if (type === 'extract') {
-    return { type: 'extract', name: 'Extract', engine: 'regex', expression: '', var: 'token' }
-  }
-  return { type: 'assert', name: 'Assert', status: 200, body_contains: '' }
 }
 
 function TreeNode({
   step, path, depth, selectedPath, onSelect, expanded, onToggle,
-  dragPath, setDragPath, onDropMove,
+  dragPath, setDragPath, onDropMove, filter,
 }) {
   const key = path.join('.')
   const isSel = selectedPath && selectedPath.join('.') === key
@@ -206,6 +64,9 @@ function TreeNode({
   const canNest = isNestableType(step.type)
   const open = expanded[key] !== false
   const [dropMode, setDropMode] = useState(null)
+  const hit = filter && nodeMatchesFilter(step, filter)
+  const hidden = filter && !matchesFilter(step, filter)
+  if (hidden) return null
 
   const onDragStart = (e) => {
     e.stopPropagation()
@@ -234,11 +95,19 @@ function TreeNode({
     setDragPath(null)
   }
 
+  const disabled = step.enabled === false
+
   return (
     <div className="opl-vu-node" data-depth={depth}>
       <button
         type="button"
-        className={`opl-vu-row ${isSel ? 'is-selected' : ''} ${dropMode ? `is-drop-${dropMode}` : ''}`}
+        className={[
+          'opl-vu-row',
+          isSel ? 'is-selected' : '',
+          dropMode ? `is-drop-${dropMode}` : '',
+          disabled ? 'is-off' : '',
+          hit ? 'is-hit' : '',
+        ].filter(Boolean).join(' ')}
         aria-current={isSel ? 'true' : undefined}
         onClick={() => onSelect(path)}
         draggable
@@ -258,7 +127,10 @@ function TreeNode({
           </span>
         ) : <span className="opl-vu-twist is-spacer" />}
         <span className={`opl-vu-badge is-${(step.type || 'http').replace('_controller', '')}`}>{typeLabel(step)}</span>
-        <span className="opl-vu-name">{step.name || step.url || '(unnamed)'}</span>
+        <span className="opl-vu-name">
+          {step.name || step.url || '(unnamed)'}
+          {disabled ? ' · disabled' : ''}
+        </span>
       </button>
       {canNest && open && kids.map((child, i) => (
         <TreeNode
@@ -273,6 +145,7 @@ function TreeNode({
           dragPath={dragPath}
           setDragPath={setDragPath}
           onDropMove={onDropMove}
+          filter={filter}
         />
       ))}
     </div>
@@ -281,7 +154,7 @@ function TreeNode({
 
 /**
  * JMeter visual test case editor — VU tree.
- * Nested journey tree with DnD reorder and If/While/Loop controllers.
+ * Nested journey tree with DnD reorder, Essentials vs Logic palette, filter, and find/replace.
  */
 export default function VuTree({
   steps,
@@ -291,8 +164,14 @@ export default function VuTree({
   expanded,
   setExpanded,
 }) {
+  const navigate = useNavigate()
   const roots = useMemo(() => (Array.isArray(steps) ? steps : []), [steps])
   const [dragPath, setDragPath] = useState(null)
+  const [showLogic, setShowLogic] = useState(false)
+  const [filter, setFilter] = useState('')
+  const [replaceOpen, setReplaceOpen] = useState(false)
+  const [find, setFind] = useState('')
+  const [replace, setReplace] = useState('')
   const listRef = useRef(null)
 
   const addRoot = (type) => {
@@ -323,7 +202,6 @@ export default function VuTree({
       addRoot(type)
       return
     }
-    // Nest HTTP under txn/if/while/loop/foreach/fragment; nest extract/assert under HTTP; nest controllers under nestable.
     if (['if', 'while', 'loop', 'foreach', 'fragment', 'transaction', 'http', 'include', 'rendezvous'].includes(type) && isNestableType(ptype)) {
       onChange(insertChildAt(roots, parentPath, makeNode(type)))
       return
@@ -335,6 +213,11 @@ export default function VuTree({
     addRoot(type)
   }
 
+  const addType = (type) => {
+    if (type === 'extract' || type === 'assert' || type === 'rendezvous') addChild(type)
+    else addRoot(type)
+  }
+
   const removeSelected = () => {
     if (!selectedPath?.length) return
     onChange(removeStepAt(roots, selectedPath))
@@ -344,6 +227,17 @@ export default function VuTree({
   const moveSelected = (dir) => {
     if (!selectedPath?.length) return
     onChange(moveStepInList(roots, selectedPath, dir))
+  }
+
+  const setSelectedEnabled = (enabled) => {
+    if (!selectedPath?.length) return
+    onChange(setEnabledAt(roots, selectedPath, enabled))
+  }
+
+  const runReplace = () => {
+    if (!find) return
+    const { steps: next } = replaceInTree(roots, find, replace)
+    onChange(next)
   }
 
   const onDropMove = (from, to, mode) => {
@@ -358,37 +252,106 @@ export default function VuTree({
     })
   }
 
+  const addLabels = {
+    http: 'HTTP',
+    transaction: 'Txn',
+    extract: 'Extract',
+    assert: 'Assert',
+    if: 'If',
+    while: 'While',
+    loop: 'Loop',
+    foreach: 'ForEach',
+    fragment: 'Frag',
+    include: 'Link',
+    rendezvous: 'Burst',
+  }
+
   return (
     <div className="opl-vu">
       <div className="opl-vu-toolbar">
-        <Button size="sm" icon={<FiPlus />} onClick={() => addRoot('http')} title="Add HTTP request">HTTP</Button>
-        <Button size="sm" icon={<FiPlus />} onClick={() => addRoot('transaction')} title="Add transaction container">Txn</Button>
-        <Button size="sm" variant="ghost" onClick={() => addRoot('if')} title="Add If controller">If</Button>
-        <Button size="sm" variant="ghost" onClick={() => addRoot('while')} title="Add While controller">While</Button>
-        <Button size="sm" variant="ghost" onClick={() => addRoot('loop')} title="Add Loop controller">Loop</Button>
-        <Button size="sm" variant="ghost" onClick={() => addRoot('foreach')} title="Add ForEach controller">ForEach</Button>
-        <Button size="sm" variant="ghost" onClick={() => addRoot('fragment')} title="Add reusable fragment">Frag</Button>
-        <Button size="sm" variant="ghost" onClick={() => addRoot('include')} title="Link to a named fragment">Link</Button>
-        <Button size="sm" variant="ghost" onClick={() => addChild('rendezvous')} title="Hold threads until the group fills, then release them together">Burst</Button>
-        <Button size="sm" variant="ghost" onClick={() => addChild('extract')} title="Nest extract under selected HTTP">Extract</Button>
-        <Button size="sm" variant="ghost" onClick={() => addChild('assert')} title="Nest assert under selected HTTP">Assert</Button>
+        {ESSENTIAL_STEP_TYPES.map((t) => (
+          <Button key={t} size="sm" icon={<FiPlus />} onClick={() => addType(t)} title={`Add ${addLabels[t]}`}>
+            {addLabels[t]}
+          </Button>
+        ))}
+        <Button
+          size="sm"
+          variant={showLogic ? 'primary' : 'ghost'}
+          onClick={() => setShowLogic((v) => !v)}
+        >
+          {showLogic ? 'Hide logic' : 'Logic & reuse'}
+        </Button>
+        {showLogic && LOGIC_STEP_TYPES.map((t) => (
+          <Button key={t} size="sm" variant="ghost" onClick={() => addType(t)} title={`Add ${addLabels[t]}`}>
+            {addLabels[t]}
+          </Button>
+        ))}
+        <span className="oui-spacer" />
+        <Input
+          className="opl-vu-filter"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter name, URL, header…"
+          aria-label="Filter tree"
+        />
+      </div>
+
+      <div className="opl-vu-toolbar">
+        <Button size="sm" variant="ghost" disabled={!selectedPath} onClick={() => setSelectedEnabled(false)}>
+          Disable
+        </Button>
+        <Button size="sm" variant="ghost" disabled={!selectedPath} onClick={() => setSelectedEnabled(true)}>
+          Enable
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setReplaceOpen((v) => !v)}>
+          Find / replace
+        </Button>
         <span className="oui-spacer" />
         <Button size="sm" variant="ghost" aria-label="Move selected node up" icon={<FiArrowUp />} disabled={!selectedPath} onClick={() => moveSelected(-1)} />
         <Button size="sm" variant="ghost" aria-label="Move selected node down" icon={<FiArrowDown />} disabled={!selectedPath} onClick={() => moveSelected(1)} />
         <Button size="sm" variant="ghost" aria-label="Remove selected node" icon={<FiTrash2 />} disabled={!selectedPath} onClick={removeSelected} />
       </div>
+
+      {replaceOpen && (
+        <div className="opl-vu-toolbar">
+          <Input
+            className="opl-vu-filter"
+            value={find}
+            onChange={(e) => setFind(e.target.value)}
+            placeholder="Find in URL / headers / body / name"
+            aria-label="Find text"
+          />
+          <Input
+            className="opl-vu-filter"
+            value={replace}
+            onChange={(e) => setReplace(e.target.value)}
+            placeholder="Replace with"
+            aria-label="Replace text"
+          />
+          <Button size="sm" variant="primary" disabled={!find} onClick={runReplace}>
+            Replace all
+          </Button>
+        </div>
+      )}
+
       <p className="oui-text-sm oui-text-muted opl-vu-hint">
         Drag a row to reorder it, or drop it onto an If / While / Loop / ForEach / Txn / Frag / HTTP
         row to nest it inside. Fragments are definitions kept once in the plan; Link references one by
-        name. Burst holds threads until the group fills, then releases them together — it applies to the
-        requests in its parent, so drop it on a single request to gate only that one. Controllers
-        round-trip through JMX.
+        name. Burst holds threads until the group fills, then releases them together.
       </p>
+
       {!roots.length ? (
         <EmptyState
           inline
-          title="Empty virtual user"
-          description="Add an HTTP request, a transaction, or a logic controller to start the journey tree."
+          title="Start a journey"
+          description="Pick how you want to build the virtual-user tree for this project."
+          actions={(
+            <>
+              <Button variant="primary" onClick={() => addRoot('http')}>Blank HTTP journey</Button>
+              <Button onClick={() => navigate('/scenarios/capture')}>Import capture (HAR / Postman)</Button>
+              <Button onClick={() => navigate('/scenarios/jmx')}>Upload / paste JMX</Button>
+            </>
+          )}
         />
       ) : (
         <div
@@ -398,7 +361,6 @@ export default function VuTree({
           onDrop={(e) => {
             e.preventDefault()
             if (dragPath?.length) {
-              // Drop on empty list area → move to end of roots
               onChange(moveStepDnD(roots, dragPath, [roots.length - 1], 'after'))
               setDragPath(null)
             }
@@ -417,6 +379,7 @@ export default function VuTree({
               dragPath={dragPath}
               setDragPath={setDragPath}
               onDropMove={onDropMove}
+              filter={filter}
             />
           ))}
         </div>

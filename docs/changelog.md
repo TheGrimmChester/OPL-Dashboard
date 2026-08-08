@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Scenario inspector and guided VU tree
+
+- Step inspector: Basics always visible; Advanced disclosure for every supported JMeter
+  prop (HTTP redirects/timeouts/think rand, extract match/template/default, assert type/field,
+  transaction timers, If/While expression flags, ForEach separator). Headers and fragment
+  inputs edit as add/remove rows; `enabled` on every type. OPA correlation headers stay separate.
+- VU tree: Essentials palette by default; **Logic & reuse** expands controllers / fragments /
+  burst. Empty state offers Blank HTTP, Capture, and JMX on-ramps. Filter, Disable/Enable, and
+  Find/replace (url / headers / body / name) sit beside DnD.
+- Validation triage: **Open in tree** (uses `path` when present), unbound-variable CTA to Users.
+- Users: Advanced CSVDataSet fields (`stop_thread`, `share_mode`, `quoted`, `ignore_first_line`,
+  `encoding`). Scenario / SLA forms expose optional `rps_min`.
+- Capture: surfaces import warnings, skip tallies (static/OPTIONS/blocked/empty — not kept
+  private), and empty results; lab private hosts are imported with warnings and need
+  `OPA_PERF_INTERNAL_HOSTS` on `opl-api` before validate/run (no re-import). Persist import
+  requires a concrete project (same as Save).
+- Expression autocomplete: binders + documented `__jexl3` / `__P(...)` snippets only.
+
 ### The family design system
 
 - Adopted `@open-family/ui`: the shared shell, tokens and component set. Deleted the local
